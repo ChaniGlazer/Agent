@@ -3,7 +3,7 @@
 Configuration is read from a YAML file (see ``config.yaml.example``) into an
 :class:`AgentConfig` dataclass. Secrets (LLM API keys) may be provided either
 directly in the YAML file or, preferably, via the ``OPENAI_API_KEY`` /
-``ANTHROPIC_API_KEY`` environment variables.
+``ANTHROPIC_API_KEY`` / ``DEEPSEEK_API_KEY`` environment variables.
 """
 
 from __future__ import annotations
@@ -33,11 +33,13 @@ class LLMProviderName(str, Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    DEEPSEEK = "deepseek"
 
 
 _ENV_API_KEY_BY_PROVIDER = {
     LLMProviderName.OPENAI: "OPENAI_API_KEY",
     LLMProviderName.ANTHROPIC: "ANTHROPIC_API_KEY",
+    LLMProviderName.DEEPSEEK: "DEEPSEEK_API_KEY",
 }
 
 

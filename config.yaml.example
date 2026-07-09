@@ -30,10 +30,11 @@ approval_mode: "none"         # one of: none, each_action, final_only
 headless: false
 
 # LLM provider
-llm_provider: "openai"        # one of: openai, anthropic
-model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" for openai, "claude-sonnet-5" for anthropic
+llm_provider: "openai"        # one of: openai, anthropic, deepseek
+model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (anthropic), "deepseek-chat" (deepseek)
 
 # Prefer setting the key via environment variable instead of committing it here:
 #   export OPENAI_API_KEY="sk-..."
 #   export ANTHROPIC_API_KEY="sk-ant-..."
+#   export DEEPSEEK_API_KEY="sk-..."
 # llm_api_key: "sk-..."

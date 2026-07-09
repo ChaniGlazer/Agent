@@ -26,7 +26,7 @@ ToolExecutor
 | `agent/browser.py` | חיבור ל-Chrome קיים דרך CDP, בחירת Tab |
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
 | `agent/tools.py` | מימוש 11 ה-Tools, dry-run, approval, retry/recovery |
-| `agent/llm.py` | הפשטה לספקי LLM (OpenAI / Anthropic) |
+| `agent/llm.py` | הפשטה לספקי LLM (OpenAI / Anthropic / DeepSeek) |
 | `agent/prompts.py` | תבניות הפרומפט למודל |
 | `agent/memory.py` | זיכרון המשימה: יעד, היסטוריה, שגיאות |
 | `agent/logger.py` | הגדרת logging + רישום פעולות מובנה |
@@ -37,7 +37,7 @@ ToolExecutor
 
 * Python 3.12 ומעלה.
 * Google Chrome מותקן.
-* מפתח API לספק ה-LLM שנבחר (OpenAI או Anthropic).
+* מפתח API לספק ה-LLM שנבחר (OpenAI, Anthropic או DeepSeek).
 
 ## התקנה
 
@@ -63,8 +63,8 @@ cp config.yaml.example config.yaml
 ```yaml
 target_url: "https://internal.example.local"
 remote_debug_port: 9222
-llm_provider: "openai"          # openai | anthropic
-model_name: "gpt-4o-mini"
+llm_provider: "openai"          # openai | anthropic | deepseek
+model_name: "gpt-4o-mini"       # לדוגמה: "deepseek-chat" עבור deepseek
 approval_mode: "none"           # none | each_action | final_only
 dry_run: false
 ```
@@ -75,7 +75,14 @@ dry_run: false
 export OPENAI_API_KEY="sk-..."
 # או
 export ANTHROPIC_API_KEY="sk-ant-..."
+# או
+export DEEPSEEK_API_KEY="sk-..."
 ```
+
+> **DeepSeek**: ה-API של DeepSeek תואם ל-OpenAI (`https://api.deepseek.com`),
+> ולכן משתמש באותה ספריית `openai` שכבר מותקנת - אין צורך בחבילה נוספת.
+> הגדירו `llm_provider: "deepseek"` ו-`model_name: "deepseek-chat"` (או
+> `deepseek-reasoner`), וקבלו מפתח API בכתובת https://platform.deepseek.com.
 
 ## הפעלת Chrome עם Remote Debugging
 
@@ -204,7 +211,7 @@ Agent/
 │   ├── browser.py         # חיבור CDP לדפדפן קיים
 │   ├── controller.py      # לולאת ה-Agent הראשית
 │   ├── tools.py           # ToolExecutor - 11 ה-Tools
-│   ├── llm.py             # ספקי LLM (OpenAI/Anthropic)
+│   ├── llm.py             # ספקי LLM (OpenAI/Anthropic/DeepSeek)
 │   ├── prompts.py         # תבניות פרומפט
 │   ├── memory.py          # זיכרון משימה
 │   ├── logger.py          # הגדרת logging

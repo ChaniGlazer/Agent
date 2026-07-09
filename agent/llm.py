@@ -122,6 +122,40 @@ class AnthropicProvider(LLMProvider):
         return "".join(block.text for block in response.content if block.type == "text")
 
 
+class DeepSeekProvider(LLMProvider):
+    """LLM provider backed by the DeepSeek API.
+
+    DeepSeek exposes an OpenAI-compatible Chat Completions endpoint, so this
+    reuses the ``openai`` SDK pointed at DeepSeek's base URL instead of
+    depending on a separate package.
+    """
+
+    _BASE_URL = "https://api.deepseek.com"
+
+    def __init__(self, model_name: str, api_key: str | None) -> None:
+        super().__init__(model_name, api_key)
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise ImportError(
+                "The 'openai' package is required for llm_provider: deepseek "
+                "(DeepSeek's API is OpenAI-compatible). Install it with: pip install openai"
+            ) from exc
+        self._client = OpenAI(api_key=api_key, base_url=self._BASE_URL)
+
+    def _complete(self, system_prompt: str, user_prompt: str) -> str:
+        response = self._client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        return response.choices[0].message.content or ""
+
+
 def create_llm_provider(config: AgentConfig) -> LLMProvider:
     """Instantiate the LLM provider selected in ``config``.
 
@@ -132,4 +166,6 @@ def create_llm_provider(config: AgentConfig) -> LLMProvider:
         return OpenAIProvider(config.model_name, config.llm_api_key)
     if config.llm_provider == LLMProviderName.ANTHROPIC:
         return AnthropicProvider(config.model_name, config.llm_api_key)
+    if config.llm_provider == LLMProviderName.DEEPSEEK:
+        return DeepSeekProvider(config.model_name, config.llm_api_key)
     raise ValueError(f"Unsupported LLM provider: {config.llm_provider}")

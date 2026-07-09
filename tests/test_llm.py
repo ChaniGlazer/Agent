@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent.llm import LLMProvider, LLMResponseError
+from agent.config import AgentConfig, ApprovalMode, LLMProviderName
+from agent.llm import DeepSeekProvider, LLMProvider, LLMResponseError, create_llm_provider
 
 
 class _StubProvider(LLMProvider):
@@ -44,3 +45,23 @@ def test_get_next_action_raises_on_missing_required_keys() -> None:
     provider = _StubProvider('{"reason": "missing action field", "finished": false}')
     with pytest.raises(LLMResponseError):
         provider.get_next_action("system", "user")
+
+
+def test_deepseek_provider_targets_deepseek_base_url() -> None:
+    provider = DeepSeekProvider(model_name="deepseek-chat", api_key="sk-test")
+    assert str(provider._client.base_url).rstrip("/") == "https://api.deepseek.com"
+
+
+def test_create_llm_provider_returns_deepseek_provider_for_deepseek_config(tmp_path) -> None:
+    config = AgentConfig(
+        target_url="https://internal.example.local",
+        screenshot_folder=tmp_path / "screenshots",
+        log_folder=tmp_path / "logs",
+        data_folder=tmp_path / "data",
+        approval_mode=ApprovalMode.NONE,
+        llm_provider=LLMProviderName.DEEPSEEK,
+        model_name="deepseek-chat",
+        llm_api_key="sk-test",
+    )
+    provider = create_llm_provider(config)
+    assert isinstance(provider, DeepSeekProvider)
