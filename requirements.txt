@@ -1,0 +1,13 @@
+# Core
+playwright>=1.44.0
+pyyaml>=6.0.1
+
+# LLM providers - only the one selected via `llm_provider` in config.yaml
+# actually needs to be installed at runtime, but both are listed so either
+# works out of the box.
+openai>=1.30.0
+anthropic>=0.30.0
+
+# Testing
+pytest>=8.0.0
+pytest-mock>=3.14.0

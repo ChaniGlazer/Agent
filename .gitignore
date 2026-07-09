@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Real configuration (may contain an API key) - keep only the .example file tracked.
+config.yaml
+.env
+
+# Runtime output
+agent/logs/*.log
+agent/screenshots/*.png
+agent/data/*.json
+!agent/logs/.gitkeep
+!agent/screenshots/.gitkeep
+!agent/data/.gitkeep

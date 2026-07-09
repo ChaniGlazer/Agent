@@ -1,0 +1,39 @@
+# Copy this file to config.yaml and adjust the values for your environment.
+# config.yaml is git-ignored since it may end up holding an API key.
+
+# The single internal website this agent is allowed to operate on.
+# Used both to locate the correct browser tab and as a safety anchor.
+target_url: "https://internal.example.local"
+
+# Chrome must already be running with remote debugging enabled, e.g.:
+#   chrome --remote-debugging-port=9222
+# The agent NEVER launches its own browser - it attaches to this one.
+remote_debug_port: 9222
+
+# Timeouts / retries
+timeout_ms: 30000
+retry_count: 3
+retry_delay_seconds: 2.0
+max_steps: 25
+
+# Folders (created automatically if missing)
+screenshot_folder: "agent/screenshots"
+log_folder: "agent/logs"
+data_folder: "agent/data"
+
+# Safety modes
+dry_run: false                # true: report actions without performing them
+approval_mode: "none"         # one of: none, each_action, final_only
+
+# Informational only - describes the already-running Chrome instance.
+# The agent does not start a browser itself, so this does not control startup.
+headless: false
+
+# LLM provider
+llm_provider: "openai"        # one of: openai, anthropic
+model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" for openai, "claude-sonnet-5" for anthropic
+
+# Prefer setting the key via environment variable instead of committing it here:
+#   export OPENAI_API_KEY="sk-..."
+#   export ANTHROPIC_API_KEY="sk-ant-..."
+# llm_api_key: "sk-..."
