@@ -27,11 +27,23 @@ no code fences) with exactly this shape:
 
 {
   "reason": "short explanation of why this action was chosen",
-  "action": "one of: click, fill, read, wait, screenshot, navigate, scroll, press, upload, download, refresh, ask, stop",
+  "action": "one of: click, fill, read, wait, screenshot, navigate, scroll, press, upload, download, refresh, open_tab, close_tab, check_links, ask, stop",
   "selector": "CSS selector to act on, or null if not applicable",
   "text": "text to type / key to press / URL to navigate to / file path to upload; empty string if not applicable",
   "finished": true or false
 }
+
+Notes on the less obvious actions:
+- "open_tab": selector must point to a link (an <a> element, or something inside
+  one) from the PAGE STATE. Opens its target in a new tab and switches PAGE
+  STATE to that new tab from the next step onward.
+- "close_tab": closes the tab most recently opened with "open_tab" and switches
+  PAGE STATE back to the tab you were on before. Fails harmlessly if there is
+  nothing to close.
+- "check_links": scans for links on the current page - within "selector" if
+  given, otherwise the whole page - and checks whether each one is reachable.
+  The result tells you how many were broken and why; use it to decide what to
+  report or do next. Selector is optional for this action.
 
 Rules:
 - Only use selectors that literally appear in the provided PAGE STATE. Never invent a selector.
@@ -44,6 +56,10 @@ Rules:
 - Take exactly one action per response. Do not plan multiple steps ahead.
 - Learn from the ACTION HISTORY: if the same action recently failed, try a
   different selector or approach instead of repeating it verbatim.
+- When a task involves visiting multiple items one at a time (e.g. several
+  rows in a list), process one fully - open it, do the work, close it - before
+  moving to the next, and use "read"/"check_links" results (visible in the
+  ACTION HISTORY) to decide what to report when you finish.
 """
 
 
