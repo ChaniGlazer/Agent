@@ -48,6 +48,7 @@ ToolExecutor
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
 | `agent/tools.py` | מימוש 11 ה-Tools, dry-run, approval, retry/recovery |
 | `agent/llm.py` | הפשטה לספקי LLM (OpenAI / Anthropic / DeepSeek) |
+| `agent/router.py` | Model Router: ניתוב לפי סוג צעד, תקציבי שימוש, ו-fallback על Rate Limit |
 | `agent/prompts.py` | תבניות הפרומפט למודל |
 | `agent/page_state.py` | מבנה הנתונים `PageState` שמתאר את הדף ל-LLM |
 | `agent/memory.py` | זיכרון המשימה: יעד, היסטוריה, שגיאות |
@@ -109,6 +110,48 @@ export DEEPSEEK_API_KEY="sk-..."
 
 > **DeepSeek**: ה-API של DeepSeek תואם ל-OpenAI (`https://api.deepseek.com`),
 > ולכן משתמש באותה ספריית `openai` שכבר מותקנת - אין צורך בחבילה נוספת.
+
+### שילוב מודלים (Multi-Model Routing)
+
+במקום מודל יחיד, אפשר להגדיר **מאגר מודלים** עם ניתוב אוטומטי לפי התאמת
+משימה ולפי מגבלות שימוש. מוסיפים ל-`config.yaml` רשימת `models` (שמחליפה
+את `llm_provider`/`model_name`):
+
+```yaml
+models:
+  - provider: "deepseek"
+    model_name: "deepseek-chat"
+    tasks: ["simple"]              # מודל זול לצעדים שגרתיים
+    priority: 1
+    max_requests_per_minute: 30    # תקציב מקומי לדקה
+    max_requests_per_day: 2000     # תקציב מקומי ליום (מתאפס בחצות UTC)
+  - provider: "anthropic"
+    model_name: "claude-sonnet-5"
+    tasks: ["complex"]             # מודל חזק לתכנון והתאוששות
+    priority: 1
+  - provider: "openai"
+    model_name: "gpt-4o-mini"
+    tasks: ["simple", "complex"]   # fallback כללי
+    priority: 9
+```
+
+איך הניתוב עובד (`agent/router.py`):
+
+* **התאמת משימה**: כל צעד מסווג אוטומטית - `complex` אם זה הצעד הראשון
+  במשימה (נדרש תכנון) או אם אחת משלוש הפעולות האחרונות נכשלה (נדרשת
+  התאוששות); אחרת `simple`. הצעד מנותב למודל זמין שמוגדר לסוג הזה, לפי
+  `priority` (נמוך = מועדף). אם אין מודל מתאים זמין - נבחר מודל זמין אחר,
+  כדי שהמשימה לא תיעצר.
+* **מגבלות שימוש**: לכל מודל נשמר מונה בקשות בחלון של 60 שניות ומונה
+  יומי. מודל שמיצה את התקציב מדולג עד שהחלון מתפנה, והתנועה עוברת למודל
+  הבא.
+* **Fallback על Rate Limit**: אם ספק מחזיר שגיאת קיבולת (HTTP 429 או 529),
+  המודל "יושב על הספסל" למשך `cooldown_seconds` (ברירת מחדל: 60) והבקשה
+  מנותבת מיד למודל הבא. שגיאות אחרות (בקשה שגויה וכו') לא גוררות fallback.
+* אם **כל** המודלים חסומים/מוצו, המשימה נעצרת בצורה מסודרת עם
+  `stop_reason: no_model_available` שמדווח לתוסף.
+
+מודל יחיד ללא מגבלות ממשיך לעבוד בדיוק כמו קודם (בלי router בכלל).
 
 ### הרצה מקומית
 
@@ -225,6 +268,8 @@ python -m pytest tests -q
 
 * `tests/test_utils.py`, `test_memory.py`, `test_config.py`, `test_llm.py` -
   בדיקות יחידה סטנדרטיות.
+* `tests/test_router.py` - ה-Model Router: סיווג צעדים, ניתוב לפי התאמה
+  ועדיפות, תקציבי שימוש (דקה/יום), ו-fallback עם cooldown על Rate Limit.
 * `tests/test_connection.py` - התאמת בקשה↔תשובה ב-`ExtensionConnection`
   מול טרנספורט מדומה.
 * `tests/test_tools.py` - `ToolExecutor` (dry-run, approval, retry/refresh/
@@ -262,6 +307,7 @@ Agent/
 │   ├── controller.py        # לולאת ה-Agent הראשית
 │   ├── tools.py             # ToolExecutor - 11 ה-Tools
 │   ├── llm.py                # ספקי LLM (OpenAI/Anthropic/DeepSeek)
+│   ├── router.py             # Model Router - שילוב מודלים
 │   ├── prompts.py            # תבניות פרומפט
 │   ├── page_state.py         # מבנה הנתונים PageState
 │   ├── memory.py              # זיכרון משימה

@@ -14,6 +14,7 @@ from agent.config import AgentConfig
 from agent.llm import LLMProvider, LLMResponseError
 from agent.memory import Memory
 from agent.prompts import SYSTEM_PROMPT, build_user_prompt
+from agent.router import NoModelAvailableError
 from agent.tools import ToolExecutor
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class TaskResult:
         steps_taken: Number of LLM/action loop iterations performed.
         stop_reason: Short machine-readable reason the loop ended, one of
             "finished", "needs_human_input: <reason>", "stopped_by_operator",
-            or "max_steps_exhausted".
+            "no_model_available: <reason>", or "max_steps_exhausted".
     """
 
     completed: bool
@@ -78,6 +79,10 @@ class AgentController:
                 logger.error("LLM produced an invalid response: %s", exc)
                 self._memory.errors.append(str(exc))
                 continue
+            except NoModelAvailableError as exc:
+                logger.error("No LLM is currently available: %s", exc)
+                self._memory.errors.append(str(exc))
+                return TaskResult(completed=False, steps_taken=step, stop_reason=f"no_model_available: {exc}")
 
             action = decision["action"]
             reason = decision.get("reason", "")

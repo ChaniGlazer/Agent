@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,11 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+#: Task kinds a model can be assigned to. "complex" steps are planning-heavy
+#: (first step of a task, or recovery after failures); "simple" steps are
+#: routine mid-task actions. See agent/router.py's classify_task.
+VALID_TASK_KINDS = ("simple", "complex")
 
 
 class ApprovalMode(str, Enum):
@@ -43,6 +48,72 @@ _ENV_API_KEY_BY_PROVIDER = {
     LLMProviderName.ANTHROPIC: "ANTHROPIC_API_KEY",
     LLMProviderName.DEEPSEEK: "DEEPSEEK_API_KEY",
 }
+
+
+@dataclass(slots=True)
+class ModelSpec:
+    """One model in the multi-model routing pool.
+
+    Attributes:
+        provider: Which LLM backend serves this model.
+        model_name: Model identifier passed to the provider.
+        api_key: API key for this model's provider (falls back to the
+            provider-specific environment variable when omitted).
+        tasks: Which step kinds this model should serve - any subset of
+            ``("simple", "complex")``. A model listed only under "complex"
+            is reserved for planning/recovery steps; one listed only under
+            "simple" handles routine mid-task actions.
+        priority: Lower value = preferred. Models with equal priority keep
+            their configuration order.
+        max_requests_per_minute: Local budget; once this many requests were
+            sent within the last 60 seconds, the router moves on to the next
+            model until the window frees up. None = unlimited.
+        max_requests_per_day: Local daily budget (resets at UTC midnight).
+            None = unlimited.
+        cooldown_seconds: How long to bench this model after its provider
+            returns a rate-limit/overloaded error (HTTP 429/529).
+    """
+
+    provider: LLMProviderName
+    model_name: str
+    api_key: str | None = None
+    tasks: tuple[str, ...] = VALID_TASK_KINDS
+    priority: int = 100
+    max_requests_per_minute: int | None = None
+    max_requests_per_day: int | None = None
+    cooldown_seconds: float = 60.0
+
+    def __post_init__(self) -> None:
+        for kind in self.tasks:
+            if kind not in VALID_TASK_KINDS:
+                raise ValueError(
+                    f"Unknown task kind {kind!r} for model {self.model_name!r}; "
+                    f"valid kinds: {list(VALID_TASK_KINDS)}"
+                )
+        if not self.tasks:
+            raise ValueError(f"Model {self.model_name!r} must list at least one task kind.")
+
+
+def _parse_model_spec(raw: dict[str, Any]) -> ModelSpec:
+    """Build a ModelSpec from one entry of the YAML ``models:`` list."""
+    if "provider" not in raw or "model_name" not in raw:
+        raise ValueError(f"Each entry under 'models' needs 'provider' and 'model_name': {raw!r}")
+    provider = LLMProviderName(raw["provider"])
+    api_key = raw.get("api_key") or os.environ.get(_ENV_API_KEY_BY_PROVIDER[provider])
+    return ModelSpec(
+        provider=provider,
+        model_name=raw["model_name"],
+        api_key=api_key,
+        tasks=tuple(raw.get("tasks", VALID_TASK_KINDS)),
+        priority=int(raw.get("priority", 100)),
+        max_requests_per_minute=(
+            int(raw["max_requests_per_minute"]) if raw.get("max_requests_per_minute") is not None else None
+        ),
+        max_requests_per_day=(
+            int(raw["max_requests_per_day"]) if raw.get("max_requests_per_day") is not None else None
+        ),
+        cooldown_seconds=float(raw.get("cooldown_seconds", 60.0)),
+    )
 
 
 @dataclass(slots=True)
@@ -72,9 +143,15 @@ class AgentConfig:
         data_folder: Directory where memory/state snapshots are saved.
         dry_run: If True, mutating actions are only reported, never performed.
         approval_mode: When human approval is required before acting.
-        llm_provider: Which LLM backend to use.
-        model_name: Model identifier passed to the LLM provider.
+        llm_provider: Which LLM backend to use (single-model mode; ignored
+            when ``models`` is non-empty except as a fallback description).
+        model_name: Model identifier passed to the LLM provider (single-model mode).
         llm_api_key: API key for the LLM provider (falls back to environment).
+        models: Optional multi-model routing pool. When non-empty, each task
+            step is routed to the best-fitting available model (by task kind,
+            priority, and local usage budgets), with automatic fallback when
+            a model hits a provider rate limit. When empty, the single
+            ``llm_provider``/``model_name`` pair is used directly.
     """
 
     target_url: str
@@ -93,6 +170,7 @@ class AgentConfig:
     llm_provider: LLMProviderName = LLMProviderName.OPENAI
     model_name: str = "gpt-4o-mini"
     llm_api_key: str | None = None
+    models: list[ModelSpec] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "AgentConfig":
@@ -126,6 +204,7 @@ class AgentConfig:
 
         api_key = raw.get("llm_api_key") or os.environ.get(_ENV_API_KEY_BY_PROVIDER[llm_provider])
         auth_token = raw.get("auth_token") or os.environ.get("AGENT_AUTH_TOKEN")
+        models = [_parse_model_spec(entry) for entry in raw.get("models") or []]
 
         config = cls(
             target_url=target_url,
@@ -144,6 +223,7 @@ class AgentConfig:
             llm_provider=llm_provider,
             model_name=os.environ.get("MODEL_NAME") or raw.get("model_name", "gpt-4o-mini"),
             llm_api_key=api_key,
+            models=models,
         )
         if not config.auth_token:
             logger.warning(

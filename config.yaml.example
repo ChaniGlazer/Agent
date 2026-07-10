@@ -37,7 +37,7 @@ data_folder: "agent/data"
 dry_run: false                # true: report actions without performing them
 approval_mode: "none"         # one of: none, each_action, final_only
 
-# LLM provider
+# LLM provider (single-model mode)
 llm_provider: "openai"        # one of: openai, anthropic, deepseek
 model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (anthropic), "deepseek-chat" (deepseek)
 
@@ -46,3 +46,33 @@ model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (
 #   export ANTHROPIC_API_KEY="sk-ant-..."
 #   export DEEPSEEK_API_KEY="sk-..."
 # llm_api_key: "sk-..."
+
+# --- Multi-model routing (optional) ------------------------------------
+# When 'models' is set, it replaces the single llm_provider/model_name pair.
+# Each step of a task is classified as "complex" (first step of a task, or a
+# step right after a failure - needs planning/recovery reasoning) or "simple"
+# (routine continuation), and routed to the best available model:
+#   * tasks:    which step kinds this model should serve
+#   * priority: lower = preferred (ties keep the order written here)
+#   * max_requests_per_minute / max_requests_per_day: local usage budgets;
+#     once spent, traffic moves to the next model until the window frees up
+#   * cooldown_seconds: how long to bench a model after the provider returns
+#     a rate-limit/overloaded error (HTTP 429/529) before trying it again
+# API keys resolve from the provider's environment variable when 'api_key'
+# is omitted (OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY).
+#
+# models:
+#   - provider: "deepseek"
+#     model_name: "deepseek-chat"
+#     tasks: ["simple"]              # cheap model for routine steps
+#     priority: 1
+#     max_requests_per_minute: 30
+#     max_requests_per_day: 2000
+#   - provider: "anthropic"
+#     model_name: "claude-sonnet-5"
+#     tasks: ["complex"]             # strong model for planning/recovery
+#     priority: 1
+#   - provider: "openai"
+#     model_name: "gpt-4o-mini"
+#     tasks: ["simple", "complex"]   # general fallback for everything
+#     priority: 9

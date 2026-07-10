@@ -156,16 +156,43 @@ class DeepSeekProvider(LLMProvider):
         return response.choices[0].message.content or ""
 
 
-def create_llm_provider(config: AgentConfig) -> LLMProvider:
-    """Instantiate the LLM provider selected in ``config``.
+def _build_single_provider(provider: LLMProviderName, model_name: str, api_key: str | None) -> LLMProvider:
+    """Construct one concrete provider instance."""
+    if provider == LLMProviderName.OPENAI:
+        return OpenAIProvider(model_name, api_key)
+    if provider == LLMProviderName.ANTHROPIC:
+        return AnthropicProvider(model_name, api_key)
+    if provider == LLMProviderName.DEEPSEEK:
+        return DeepSeekProvider(model_name, api_key)
+    raise ValueError(f"Unsupported LLM provider: {provider}")
+
+
+def create_llm_provider(config: AgentConfig):
+    """Instantiate the decision-maker selected in ``config``.
+
+    Returns a plain :class:`LLMProvider` in single-model mode (no ``models``
+    list, or one model with no usage budgets), or an
+    :class:`agent.router.ModelRouter` when multiple models - or usage
+    budgets - are configured. Both expose the same
+    ``get_next_action(system, user)`` interface.
 
     Raises:
-        ValueError: If ``config.llm_provider`` is not a supported provider.
+        ValueError: If a configured provider is not supported.
     """
-    if config.llm_provider == LLMProviderName.OPENAI:
-        return OpenAIProvider(config.model_name, config.llm_api_key)
-    if config.llm_provider == LLMProviderName.ANTHROPIC:
-        return AnthropicProvider(config.model_name, config.llm_api_key)
-    if config.llm_provider == LLMProviderName.DEEPSEEK:
-        return DeepSeekProvider(config.model_name, config.llm_api_key)
-    raise ValueError(f"Unsupported LLM provider: {config.llm_provider}")
+    specs = config.models
+    if not specs:
+        return _build_single_provider(config.llm_provider, config.model_name, config.llm_api_key)
+
+    single_unbudgeted = (
+        len(specs) == 1
+        and specs[0].max_requests_per_minute is None
+        and specs[0].max_requests_per_day is None
+    )
+    if single_unbudgeted:
+        spec = specs[0]
+        return _build_single_provider(spec.provider, spec.model_name, spec.api_key)
+
+    # Imported here (not at module top) because agent.router imports this module.
+    from agent.router import ModelRouter
+
+    return ModelRouter(specs)
