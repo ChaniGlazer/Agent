@@ -1,8 +1,8 @@
 <!doctype html>
-<html>
+<html dir="rtl" lang="he">
 <head>
   <meta charset="utf-8" />
-  <title>Web Agent - Server settings</title>
+  <title>סוכן האינטרנט - הגדרות שרת</title>
   <style>
     body {
       font-family: -apple-system, "Segoe UI", Arial, sans-serif;
@@ -20,6 +20,8 @@
       font-size: 13px;
       border: 1px solid #ccc;
       border-radius: 4px;
+      direction: ltr;
+      text-align: left;
     }
     .hint { font-size: 12px; color: #666; margin-top: 4px; }
     button {
@@ -32,23 +34,23 @@
       font-size: 13px;
       cursor: pointer;
     }
-    #saved { margin-left: 10px; font-size: 12px; color: #16a34a; visibility: hidden; }
+    #saved { margin-right: 10px; font-size: 12px; color: #16a34a; visibility: hidden; }
   </style>
 </head>
 <body>
-  <h1>Web Agent - server settings</h1>
-  <p>Connect this browser to your agent server (e.g. deployed on Render).</p>
+  <h1>סוכן האינטרנט - הגדרות שרת</h1>
+  <p>חברו את הדפדפן הזה לשרת סוכן האינטרנט שלכם (למשל, שנפרס ב-Render).</p>
 
-  <label for="serverUrl">Server URL</label>
+  <label for="serverUrl">כתובת שרת</label>
   <input id="serverUrl" type="text" placeholder="wss://your-app.onrender.com" />
-  <div class="hint">The WebSocket base URL of your deployed server (no trailing "/ws").</div>
+  <div class="hint">כתובת ה-WebSocket הבסיסית של השרת שנפרס (בלי "/ws" בסוף).</div>
 
-  <label for="token">Auth token</label>
-  <input id="token" type="password" placeholder="shared secret" />
-  <div class="hint">Must match the server's AGENT_AUTH_TOKEN / auth_token setting.</div>
+  <label for="token">טוקן אימות</label>
+  <input id="token" type="password" placeholder="סוד משותף" />
+  <div class="hint">חייב להתאים להגדרת AGENT_AUTH_TOKEN / auth_token בשרת.</div>
 
-  <button id="saveBtn">Save</button>
-  <span id="saved">Saved.</span>
+  <button id="saveBtn">שמור</button>
+  <span id="saved">נשמר.</span>
 
   <script src="storage.js"></script>
   <script src="options.js"></script>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Web Agent Connector",
+  "name": "סוכן האינטרנט - מחבר",
   "version": "1.0.0",
-  "description": "Connects this browser to your Web Agent server and executes its browser actions on a single configured internal website.",
+  "description": "מחבר את הדפדפן הזה לשרת סוכן האינטרנט שלך ומבצע את פעולות הדפדפן שלו על אתר פנימי אחד שהוגדר מראש.",
   "permissions": [
     "storage",
     "scripting",
@@ -19,7 +19,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Web Agent",
+    "default_title": "סוכן האינטרנט",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

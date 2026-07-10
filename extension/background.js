@@ -74,7 +74,7 @@ async function connectWebSocket() {
 
   socket.addEventListener("open", () => {
     connectionStatus = "connected";
-    pushLog("info", "Connected to server.");
+    pushLog("info", "מחובר לשרת.");
     broadcastStatus();
   });
   socket.addEventListener("message", (event) => handleServerMessage(event.data));
@@ -84,7 +84,7 @@ async function connectWebSocket() {
     scheduleReconnect();
   });
   socket.addEventListener("error", () => {
-    pushLog("error", "WebSocket error.");
+    pushLog("error", "שגיאת תקשורת (WebSocket).");
   });
 }
 
@@ -124,7 +124,7 @@ async function handleServerMessage(raw) {
   try {
     message = JSON.parse(raw);
   } catch {
-    pushLog("error", "Received malformed message from server.");
+    pushLog("error", "התקבלה הודעה לא תקינה מהשרת.");
     return;
   }
 
@@ -132,7 +132,7 @@ async function handleServerMessage(raw) {
     case "hello_ack":
       targetUrl = message.target_url || "";
       await chrome.storage.session.set({ targetUrl });
-      pushLog("info", `Server ready. Target site: ${targetUrl}`);
+      pushLog("info", `השרת מוכן. אתר היעד: ${targetUrl}`);
       broadcastStatus();
       break;
     case "request":
@@ -143,11 +143,11 @@ async function handleServerMessage(raw) {
       break;
     case "task_finished":
       currentTask = null;
-      pushLog(message.completed ? "success" : "warn", `Task finished (${message.stop_reason}).`);
+      pushLog(message.completed ? "success" : "warn", `המשימה הסתיימה (${message.stop_reason}).`);
       broadcastStatus();
       break;
     case "error":
-      pushLog("error", message.message || "Server error.");
+      pushLog("error", message.message || "שגיאת שרת.");
       break;
     default:
       console.warn("Unknown message type from server:", message.type);
@@ -538,9 +538,9 @@ function requestApproval(action, selector, text) {
     chrome.notifications.create(notificationId, {
       type: "basic",
       iconUrl: "icons/icon128.png",
-      title: "Web Agent - approval needed",
-      message: `${action} on "${target}"${text && selector ? ` with "${text}"` : ""}`,
-      buttons: [{ title: "Approve" }, { title: "Deny" }],
+      title: "סוכן האינטרנט - נדרש אישור",
+      message: `פעולת "${action}" על "${target}"${text && selector ? ` עם הטקסט "${text}"` : ""}`,
+      buttons: [{ title: "אשר" }, { title: "דחה" }],
       requireInteraction: true,
     });
 
