@@ -178,3 +178,105 @@ def test_ensure_directories_creates_missing_folders(tmp_path: Path) -> None:
     assert (tmp_path / "screenshots").is_dir()
     assert (tmp_path / "logs").is_dir()
     assert (tmp_path / "data").is_dir()
+
+
+def test_free_tier_provider_gets_its_known_default_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    path = _write_yaml(
+        tmp_path,
+        """
+target_url: "https://internal.example.local"
+models:
+  - provider: "groq"
+    model_name: "llama-3.3-70b-versatile"
+    tasks: ["simple"]
+""",
+    )
+
+    config = AgentConfig.from_yaml(path)
+
+    assert config.models[0].base_url == "https://api.groq.com/openai/v1"
+    assert config.models[0].api_key == "gsk-test"
+
+
+def test_explicit_base_url_overrides_the_known_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
+    path = _write_yaml(
+        tmp_path,
+        """
+target_url: "https://internal.example.local"
+models:
+  - provider: "openrouter"
+    model_name: "meta-llama/llama-3.1-8b-instruct:free"
+    base_url: "https://my-openrouter-proxy.example/v1"
+""",
+    )
+
+    config = AgentConfig.from_yaml(path)
+
+    assert config.models[0].base_url == "https://my-openrouter-proxy.example/v1"
+
+
+def test_cloudflare_model_without_base_url_raises_at_load_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-test")
+    path = _write_yaml(
+        tmp_path,
+        """
+target_url: "https://internal.example.local"
+models:
+  - provider: "cloudflare"
+    model_name: "@cf/meta/llama-3.1-8b-instruct"
+""",
+    )
+
+    with pytest.raises(ValueError, match="base_url"):
+        AgentConfig.from_yaml(path)
+
+
+def test_cloudflare_model_with_explicit_base_url_loads_fine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-test")
+    path = _write_yaml(
+        tmp_path,
+        """
+target_url: "https://internal.example.local"
+models:
+  - provider: "cloudflare"
+    model_name: "@cf/meta/llama-3.1-8b-instruct"
+    base_url: "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1"
+""",
+    )
+
+    config = AgentConfig.from_yaml(path)
+
+    assert config.models[0].base_url == "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1"
+
+
+def test_single_model_mode_with_free_tier_provider_resolves_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+    path = _write_yaml(
+        tmp_path,
+        'target_url: "https://internal.example.local"\nllm_provider: "google"\nmodel_name: "gemini-2.5-flash"\n',
+    )
+
+    config = AgentConfig.from_yaml(path)
+
+    assert config.llm_base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert config.llm_api_key == "g-test"
+
+
+def test_single_model_mode_cloudflare_without_base_url_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-test")
+    path = _write_yaml(
+        tmp_path,
+        'target_url: "https://internal.example.local"\nllm_provider: "cloudflare"\nmodel_name: "@cf/meta/llama-3.1-8b-instruct"\n',
+    )
+
+    with pytest.raises(ValueError, match="base_url"):
+        AgentConfig.from_yaml(path)
+
+
+def test_all_new_provider_names_are_recognized() -> None:
+    for name in ("google", "groq", "together", "openrouter", "huggingface", "mistral", "cohere", "cloudflare", "nvidia"):
+        assert LLMProviderName(name).value == name

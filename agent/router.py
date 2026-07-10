@@ -31,13 +31,8 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from agent.config import LLMProviderName, ModelSpec
-from agent.llm import (
-    AnthropicProvider,
-    DeepSeekProvider,
-    LLMProvider,
-    OpenAIProvider,
-)
+from agent.config import ModelSpec
+from agent.llm import LLMProvider, build_provider_for_spec
 
 logger = logging.getLogger(__name__)
 
@@ -82,17 +77,6 @@ def _is_capacity_error(exc: BaseException) -> bool:
     return "RateLimit" in name or "Overloaded" in name
 
 
-def _build_provider(spec: ModelSpec) -> LLMProvider:
-    """Construct the concrete provider for one model spec."""
-    if spec.provider == LLMProviderName.OPENAI:
-        return OpenAIProvider(spec.model_name, spec.api_key)
-    if spec.provider == LLMProviderName.ANTHROPIC:
-        return AnthropicProvider(spec.model_name, spec.api_key)
-    if spec.provider == LLMProviderName.DEEPSEEK:
-        return DeepSeekProvider(spec.model_name, spec.api_key)
-    raise ValueError(f"Unsupported LLM provider: {spec.provider}")
-
-
 class ManagedModel:
     """One model in the pool: its spec, lazily-built provider, and usage state.
 
@@ -100,7 +84,7 @@ class ManagedModel:
     whose SDK isn't installed costs nothing until that model is actually picked.
     """
 
-    def __init__(self, spec: ModelSpec, provider_factory: Callable[[ModelSpec], LLMProvider] = _build_provider) -> None:
+    def __init__(self, spec: ModelSpec, provider_factory: Callable[[ModelSpec], LLMProvider] = build_provider_for_spec) -> None:
         self.spec = spec
         self._provider_factory = provider_factory
         self._provider: LLMProvider | None = None
@@ -168,7 +152,7 @@ class ModelRouter:
     def __init__(
         self,
         specs: list[ModelSpec],
-        provider_factory: Callable[[ModelSpec], LLMProvider] = _build_provider,
+        provider_factory: Callable[[ModelSpec], LLMProvider] = build_provider_for_spec,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not specs:

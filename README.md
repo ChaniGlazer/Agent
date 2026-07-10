@@ -47,7 +47,7 @@ ToolExecutor
 | `agent/connection.py` | `ExtensionConnection`/`RemoteBrowser` - התאמת בקשה↔תשובה מול התוסף |
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
 | `agent/tools.py` | מימוש 14 ה-Tools, dry-run, approval, retry/recovery |
-| `agent/llm.py` | הפשטה לספקי LLM (OpenAI / Anthropic / DeepSeek) |
+| `agent/llm.py` | הפשטה לספקי LLM (OpenAI/Anthropic + כל ספק תואם-OpenAI - ראו טבלה למטה) |
 | `agent/router.py` | Model Router: ניתוב לפי סוג צעד, תקציבי שימוש, ו-fallback על Rate Limit |
 | `agent/prompts.py` | תבניות הפרומפט למודל |
 | `agent/page_state.py` | מבנה הנתונים `PageState` שמתאר את הדף ל-LLM |
@@ -63,7 +63,7 @@ ToolExecutor
 
 * Python 3.12 ומעלה (לשרת).
 * Google Chrome (להתקנת התוסף).
-* מפתח API לספק ה-LLM שנבחר (OpenAI, Anthropic או DeepSeek).
+* מפתח API לספק ה-LLM שנבחר (יש גם מסלולים חינמיים - ראו טבלת הספקים למטה).
 * חשבון Render (או כל שרת אחר שיודע להריץ אפליקציית ASGI) לפריסת השרת - אפשר גם להריץ מקומית לבדיקות.
 
 ## חלק 1: השרת
@@ -86,7 +86,7 @@ cp config.yaml.example config.yaml
 
 ```yaml
 target_url: "https://internal.example.local"
-llm_provider: "openai"          # openai | anthropic | deepseek
+llm_provider: "openai"          # ראו טבלת ספקים למטה
 model_name: "gpt-4o-mini"       # לדוגמה: "deepseek-chat" עבור deepseek
 approval_mode: "none"           # none | each_action | final_only
 dry_run: false
@@ -98,42 +98,69 @@ dry_run: false
 ```bash
 export AGENT_AUTH_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export OPENAI_API_KEY="sk-..."
-# או
-export ANTHROPIC_API_KEY="sk-ant-..."
-# או
-export DEEPSEEK_API_KEY="sk-..."
 ```
 
 `TARGET_URL`, `LLM_PROVIDER` ו-`MODEL_NAME` ניתנים גם הם לדריסה ממשתני
 סביבה, כך שאפשר להריץ את השרת מבלי לערוך את `config.yaml` בכלל (רלוונטי
 במיוחד לפריסה ב-Render, ראו למטה).
 
-> **DeepSeek**: ה-API של DeepSeek תואם ל-OpenAI (`https://api.deepseek.com`),
-> ולכן משתמש באותה ספריית `openai` שכבר מותקנת - אין צורך בחבילה נוספת.
+### ספקי LLM נתמכים (כולל מסלולים חינמיים)
 
-### שילוב מודלים (Multi-Model Routing)
+מלבד OpenAI ו-Anthropic (שמשתמשים בספריות ה-SDK הרשמיות שלהם), כל ספק אחר
+נתמך דרך endpoint תואם-OpenAI (`agent.llm.OpenAICompatibleProvider`) -
+אותה ספריית `openai` שכבר מותקנת, מכוונת לכתובת אחרת. לרוב הספקים יש
+כתובת ברירת מחדל מובנית; רק Cloudflare דורש שתגדירו את `base_url` בעצמכם
+(הכתובת שלו כוללת את ה-account ID שלכם).
+
+| `provider` | משתנה סביבה למפתח | מסלול חינמי? | הערות |
+|---|---|---|---|
+| `openai` | `OPENAI_API_KEY` | לא | |
+| `anthropic` | `ANTHROPIC_API_KEY` | לא | |
+| `deepseek` | `DEEPSEEK_API_KEY` | לפעמים זול מאוד | |
+| `google` | `GOOGLE_API_KEY` | כן (Gemini Flash) | דרך Google AI Studio |
+| `groq` | `GROQ_API_KEY` | כן | תגובות מהירות מאוד, מכסות נמוכות יחסית |
+| `together` | `TOGETHER_API_KEY` | קרדיט התחלתי | אחר כך בתשלום |
+| `openrouter` | `OPENROUTER_API_KEY` | חלקית | רק מודלים עם סיומת `:free` בשם |
+| `huggingface` | `HF_TOKEN` | כן (מוגבל) | דרך ה-router המאוחד של Inference Providers |
+| `mistral` | `MISTRAL_API_KEY` | קרדיט/מוגבל | |
+| `cohere` | `COHERE_API_KEY` | מסלול ניסיון | |
+| `cloudflare` | `CLOUDFLARE_API_TOKEN` | כן (מכסת CPU) | **חובה** `base_url` עם ה-account ID שלכם |
+| `nvidia` | `NVIDIA_API_KEY` | לעיתים קרדיט | דרך NIM |
+
+> **חשוב**: מכסות ותנאי החינם משתנים לעיתים קרובות - בדקו בדף התמחור
+> הרשמי של כל ספק לפני הסתמכות רצינית על מסלול חינמי.
+
+### שילוב מודלים (Multi-Model Routing) - כולל Fallback חינמי
 
 במקום מודל יחיד, אפשר להגדיר **מאגר מודלים** עם ניתוב אוטומטי לפי התאמת
-משימה ולפי מגבלות שימוש. מוסיפים ל-`config.yaml` רשימת `models` (שמחליפה
-את `llm_provider`/`model_name`):
+משימה ולפי מגבלות שימוש - כולל שרשור בין כמה ספקים חינמיים, כשכל אחד
+מתמלא הבקשה עוברת אוטומטית לבא בתור. מוסיפים ל-`config.yaml` רשימת
+`models` (שמחליפה את `llm_provider`/`model_name`):
 
 ```yaml
 models:
-  - provider: "deepseek"
+  - provider: "google"
+    model_name: "gemini-2.5-flash"
+    tasks: ["simple", "complex"]
+    priority: 1
+    max_requests_per_minute: 10
+    max_requests_per_day: 250
+  - provider: "groq"
+    model_name: "llama-3.3-70b-versatile"
+    tasks: ["simple"]              # מודל מהיר לצעדים שגרתיים
+    priority: 2
+    max_requests_per_minute: 30
+  - provider: "openrouter"
+    model_name: "meta-llama/llama-3.1-8b-instruct:free"
+    tasks: ["simple", "complex"]
+    priority: 3
+  - provider: "deepseek"           # רשת ביטחון זולה בתשלום, כדי שהמשימה לא תיתקע
     model_name: "deepseek-chat"
-    tasks: ["simple"]              # מודל זול לצעדים שגרתיים
-    priority: 1
-    max_requests_per_minute: 30    # תקציב מקומי לדקה
-    max_requests_per_day: 2000     # תקציב מקומי ליום (מתאפס בחצות UTC)
-  - provider: "anthropic"
-    model_name: "claude-sonnet-5"
-    tasks: ["complex"]             # מודל חזק לתכנון והתאוששות
-    priority: 1
-  - provider: "openai"
-    model_name: "gpt-4o-mini"
-    tasks: ["simple", "complex"]   # fallback כללי
+    tasks: ["simple", "complex"]
     priority: 9
 ```
+
+(דוגמה מורחבת יותר, עם עוד ספקים, נמצאת ב-`config.yaml.example`.)
 
 איך הניתוב עובד (`agent/router.py`):
 
@@ -367,7 +394,7 @@ Agent/
 │   ├── connection.py        # ExtensionConnection / RemoteBrowser
 │   ├── controller.py        # לולאת ה-Agent הראשית
 │   ├── tools.py             # ToolExecutor - 11 ה-Tools
-│   ├── llm.py                # ספקי LLM (OpenAI/Anthropic/DeepSeek)
+│   ├── llm.py                # ספקי LLM (OpenAI/Anthropic + Provider תואם-OpenAI)
 │   ├── router.py             # Model Router - שילוב מודלים
 │   ├── prompts.py            # תבניות פרומפט
 │   ├── page_state.py         # מבנה הנתונים PageState

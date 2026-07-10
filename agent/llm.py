@@ -1,10 +1,15 @@
 """LLM provider abstraction: turns (system prompt, user prompt) into a
 validated action-decision dict.
 
-Two concrete providers are included (OpenAI, Anthropic); both are imported
-lazily so the unused one never needs to be installed. Providers only need to
-implement ``_complete`` - JSON extraction/validation is shared in the base
-class so every provider returns the same guaranteed shape.
+OpenAI and Anthropic each get a dedicated class using their own SDK. Every
+other supported provider (DeepSeek, Google AI Studio/Gemini, Groq, Together
+AI, OpenRouter, Mistral, NVIDIA NIM, Cohere, Hugging Face, Cloudflare Workers
+AI, ...) exposes an OpenAI-compatible Chat Completions endpoint, so they all
+share :class:`OpenAICompatibleProvider` - just the ``openai`` SDK pointed at
+a different ``base_url``. All SDKs are imported lazily so an unused one never
+needs to be installed. Providers only need to implement ``_complete`` - JSON
+extraction/validation is shared in the base class so every provider returns
+the same guaranteed shape.
 """
 
 from __future__ import annotations
@@ -13,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from agent.config import AgentConfig, LLMProviderName
+from agent.config import AgentConfig, LLMProviderName, ModelSpec
 from agent.utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -122,26 +127,28 @@ class AnthropicProvider(LLMProvider):
         return "".join(block.text for block in response.content if block.type == "text")
 
 
-class DeepSeekProvider(LLMProvider):
-    """LLM provider backed by the DeepSeek API.
+class OpenAICompatibleProvider(LLMProvider):
+    """LLM provider for any backend that exposes an OpenAI-compatible Chat
+    Completions endpoint - which today covers most low-cost/free-tier
+    providers (DeepSeek, Google AI Studio/Gemini, Groq, Together AI,
+    OpenRouter, Mistral, NVIDIA NIM, Cohere's compatibility API, Hugging
+    Face's Inference Providers router, Cloudflare Workers AI, ...).
 
-    DeepSeek exposes an OpenAI-compatible Chat Completions endpoint, so this
-    reuses the ``openai`` SDK pointed at DeepSeek's base URL instead of
-    depending on a separate package.
+    Reuses the ``openai`` SDK pointed at a different ``base_url`` instead of
+    depending on a separate package per provider.
     """
 
-    _BASE_URL = "https://api.deepseek.com"
-
-    def __init__(self, model_name: str, api_key: str | None) -> None:
+    def __init__(self, model_name: str, api_key: str | None, base_url: str) -> None:
         super().__init__(model_name, api_key)
         try:
             from openai import OpenAI
         except ImportError as exc:
             raise ImportError(
-                "The 'openai' package is required for llm_provider: deepseek "
-                "(DeepSeek's API is OpenAI-compatible). Install it with: pip install openai"
+                "The 'openai' package is required for OpenAI-compatible providers. "
+                "Install it with: pip install openai"
             ) from exc
-        self._client = OpenAI(api_key=api_key, base_url=self._BASE_URL)
+        self.base_url = base_url
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
 
     def _complete(self, system_prompt: str, user_prompt: str) -> str:
         response = self._client.chat.completions.create(
@@ -156,15 +163,48 @@ class DeepSeekProvider(LLMProvider):
         return response.choices[0].message.content or ""
 
 
-def _build_single_provider(provider: LLMProviderName, model_name: str, api_key: str | None) -> LLMProvider:
-    """Construct one concrete provider instance."""
+class DeepSeekProvider(OpenAICompatibleProvider):
+    """LLM provider backed by the DeepSeek API (OpenAI-compatible)."""
+
+    _BASE_URL = "https://api.deepseek.com"
+
+    def __init__(self, model_name: str, api_key: str | None) -> None:
+        super().__init__(model_name, api_key, base_url=self._BASE_URL)
+
+
+def _construct_provider(
+    provider: LLMProviderName, model_name: str, api_key: str | None, base_url: str | None
+) -> LLMProvider:
+    """Construct one concrete provider instance.
+
+    OPENAI/ANTHROPIC/DEEPSEEK use their dedicated classes (DeepSeek's hardcodes
+    its own base_url, so it never needs one supplied). Every other provider
+    goes through :class:`OpenAICompatibleProvider`, for which ``base_url``
+    must already be resolved (see ``agent.config._resolve_base_url`` /
+    ``_require_base_url`` - both ``AgentConfig.from_yaml`` and
+    ``_parse_model_spec`` do this eagerly, so a missing base_url is normally
+    caught at config-load time, not here).
+    """
     if provider == LLMProviderName.OPENAI:
         return OpenAIProvider(model_name, api_key)
     if provider == LLMProviderName.ANTHROPIC:
         return AnthropicProvider(model_name, api_key)
     if provider == LLMProviderName.DEEPSEEK:
         return DeepSeekProvider(model_name, api_key)
-    raise ValueError(f"Unsupported LLM provider: {provider}")
+    if base_url is None:
+        raise ValueError(
+            f"llm_provider {provider.value!r} needs a base_url - set 'base_url' "
+            "(per-model in the 'models' list) or 'llm_base_url' (single-model mode)."
+        )
+    return OpenAICompatibleProvider(model_name, api_key, base_url)
+
+
+def build_provider_for_spec(spec: ModelSpec) -> LLMProvider:
+    """Build the concrete provider for one multi-model routing entry.
+
+    Used as :class:`agent.router.ModelRouter`'s default provider factory.
+    """
+    return _construct_provider(spec.provider, spec.model_name, spec.api_key, spec.base_url)
 
 
 def create_llm_provider(config: AgentConfig):
@@ -181,7 +221,7 @@ def create_llm_provider(config: AgentConfig):
     """
     specs = config.models
     if not specs:
-        return _build_single_provider(config.llm_provider, config.model_name, config.llm_api_key)
+        return _construct_provider(config.llm_provider, config.model_name, config.llm_api_key, config.llm_base_url)
 
     single_unbudgeted = (
         len(specs) == 1
@@ -189,8 +229,7 @@ def create_llm_provider(config: AgentConfig):
         and specs[0].max_requests_per_day is None
     )
     if single_unbudgeted:
-        spec = specs[0]
-        return _build_single_provider(spec.provider, spec.model_name, spec.api_key)
+        return build_provider_for_spec(specs[0])
 
     # Imported here (not at module top) because agent.router imports this module.
     from agent.router import ModelRouter

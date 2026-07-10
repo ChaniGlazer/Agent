@@ -1,11 +1,10 @@
 """Loading and validating the agent's configuration.
 
 Configuration is read from a YAML file (see ``config.yaml.example``) into an
-:class:`AgentConfig` dataclass. Secrets (the LLM API key and the extension
-auth token) may be provided either directly in the YAML file or, preferably,
-via environment variables (``OPENAI_API_KEY`` / ``ANTHROPIC_API_KEY`` /
-``DEEPSEEK_API_KEY`` / ``AGENT_AUTH_TOKEN``) - the latter is how secrets are
-normally supplied on Render.
+:class:`AgentConfig` dataclass. Secrets (LLM API keys and the extension auth
+token) may be provided either directly in the YAML file or, preferably, via
+environment variables (``<PROVIDER>_API_KEY`` / ``AGENT_AUTH_TOKEN``) - the
+latter is how secrets are normally supplied on Render.
 """
 
 from __future__ import annotations
@@ -36,18 +35,80 @@ class ApprovalMode(str, Enum):
 
 
 class LLMProviderName(str, Enum):
-    """Supported LLM backends."""
+    """Supported LLM backends.
+
+    ``OPENAI`` and ``ANTHROPIC`` use their own SDKs against each provider's
+    default endpoint. Every other value is served through
+    :class:`agent.llm.OpenAICompatibleProvider` (the ``openai`` SDK pointed
+    at that provider's OpenAI-compatible Chat Completions endpoint) - which
+    is how most of today's low-cost/free-tier providers expose their API.
+    """
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     DEEPSEEK = "deepseek"
+    GOOGLE = "google"
+    GROQ = "groq"
+    TOGETHER = "together"
+    OPENROUTER = "openrouter"
+    HUGGINGFACE = "huggingface"
+    MISTRAL = "mistral"
+    COHERE = "cohere"
+    CLOUDFLARE = "cloudflare"
+    NVIDIA = "nvidia"
 
 
 _ENV_API_KEY_BY_PROVIDER = {
     LLMProviderName.OPENAI: "OPENAI_API_KEY",
     LLMProviderName.ANTHROPIC: "ANTHROPIC_API_KEY",
     LLMProviderName.DEEPSEEK: "DEEPSEEK_API_KEY",
+    LLMProviderName.GOOGLE: "GOOGLE_API_KEY",
+    LLMProviderName.GROQ: "GROQ_API_KEY",
+    LLMProviderName.TOGETHER: "TOGETHER_API_KEY",
+    LLMProviderName.OPENROUTER: "OPENROUTER_API_KEY",
+    LLMProviderName.HUGGINGFACE: "HF_TOKEN",
+    LLMProviderName.MISTRAL: "MISTRAL_API_KEY",
+    LLMProviderName.COHERE: "COHERE_API_KEY",
+    LLMProviderName.CLOUDFLARE: "CLOUDFLARE_API_TOKEN",
+    LLMProviderName.NVIDIA: "NVIDIA_API_KEY",
 }
+
+#: Default OpenAI-compatible base URL per provider (verified against each
+#: provider's current docs). OPENAI/ANTHROPIC are absent - they use their own
+#: SDK's built-in default endpoint, not this mechanism. CLOUDFLARE is absent
+#: on purpose: its endpoint is account-scoped
+#: (``https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1``), so
+#: there is no safe default - ``base_url`` must be supplied explicitly.
+_DEFAULT_BASE_URL_BY_PROVIDER: dict[LLMProviderName, str] = {
+    LLMProviderName.DEEPSEEK: "https://api.deepseek.com",
+    LLMProviderName.GOOGLE: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    LLMProviderName.GROQ: "https://api.groq.com/openai/v1",
+    LLMProviderName.TOGETHER: "https://api.together.ai/v1",
+    LLMProviderName.OPENROUTER: "https://openrouter.ai/api/v1",
+    LLMProviderName.MISTRAL: "https://api.mistral.ai/v1",
+    LLMProviderName.NVIDIA: "https://integrate.api.nvidia.com/v1",
+    LLMProviderName.COHERE: "https://api.cohere.ai/compatibility/v1",
+    LLMProviderName.HUGGINGFACE: "https://router.huggingface.co/v1",
+}
+
+#: Providers that manage their own default endpoint via their native SDK and
+#: therefore never need a base_url.
+_SELF_CONTAINED_PROVIDERS = (LLMProviderName.OPENAI, LLMProviderName.ANTHROPIC)
+
+
+def _resolve_base_url(provider: LLMProviderName, explicit: str | None) -> str | None:
+    """Pick the effective base_url for ``provider``: explicit override, else the known default."""
+    return explicit or _DEFAULT_BASE_URL_BY_PROVIDER.get(provider)
+
+
+def _require_base_url(provider: LLMProviderName, base_url: str | None, where: str) -> None:
+    """Fail fast (at config-load time) if a provider needs a base_url and none was resolved."""
+    if base_url is None and provider not in _SELF_CONTAINED_PROVIDERS:
+        raise ValueError(
+            f"{where}: provider {provider.value!r} has no default base_url and none was given - "
+            "set 'base_url' explicitly (this is expected for Cloudflare Workers AI, whose "
+            "endpoint is scoped to your account ID)."
+        )
 
 
 @dataclass(slots=True)
@@ -59,6 +120,9 @@ class ModelSpec:
         model_name: Model identifier passed to the provider.
         api_key: API key for this model's provider (falls back to the
             provider-specific environment variable when omitted).
+        base_url: OpenAI-compatible endpoint for providers served through
+            :class:`agent.llm.OpenAICompatibleProvider` (falls back to that
+            provider's known default; ignored for OPENAI/ANTHROPIC).
         tasks: Which step kinds this model should serve - any subset of
             ``("simple", "complex")``. A model listed only under "complex"
             is reserved for planning/recovery steps; one listed only under
@@ -77,6 +141,7 @@ class ModelSpec:
     provider: LLMProviderName
     model_name: str
     api_key: str | None = None
+    base_url: str | None = None
     tasks: tuple[str, ...] = VALID_TASK_KINDS
     priority: int = 100
     max_requests_per_minute: int | None = None
@@ -100,10 +165,13 @@ def _parse_model_spec(raw: dict[str, Any]) -> ModelSpec:
         raise ValueError(f"Each entry under 'models' needs 'provider' and 'model_name': {raw!r}")
     provider = LLMProviderName(raw["provider"])
     api_key = raw.get("api_key") or os.environ.get(_ENV_API_KEY_BY_PROVIDER[provider])
+    base_url = _resolve_base_url(provider, raw.get("base_url"))
+    _require_base_url(provider, base_url, f"model {raw['model_name']!r}")
     return ModelSpec(
         provider=provider,
         model_name=raw["model_name"],
         api_key=api_key,
+        base_url=base_url,
         tasks=tuple(raw.get("tasks", VALID_TASK_KINDS)),
         priority=int(raw.get("priority", 100)),
         max_requests_per_minute=(
@@ -147,6 +215,9 @@ class AgentConfig:
             when ``models`` is non-empty except as a fallback description).
         model_name: Model identifier passed to the LLM provider (single-model mode).
         llm_api_key: API key for the LLM provider (falls back to environment).
+        llm_base_url: OpenAI-compatible endpoint for `llm_provider` (single-model
+            mode; falls back to that provider's known default - see
+            `agent.config._DEFAULT_BASE_URL_BY_PROVIDER`).
         models: Optional multi-model routing pool. When non-empty, each task
             step is routed to the best-fitting available model (by task kind,
             priority, and local usage budgets), with automatic fallback when
@@ -170,6 +241,7 @@ class AgentConfig:
     llm_provider: LLMProviderName = LLMProviderName.OPENAI
     model_name: str = "gpt-4o-mini"
     llm_api_key: str | None = None
+    llm_base_url: str | None = None
     models: list[ModelSpec] = field(default_factory=list)
 
     @classmethod
@@ -203,6 +275,8 @@ class AgentConfig:
         approval_mode = ApprovalMode(raw.get("approval_mode", ApprovalMode.NONE.value))
 
         api_key = raw.get("llm_api_key") or os.environ.get(_ENV_API_KEY_BY_PROVIDER[llm_provider])
+        llm_base_url = _resolve_base_url(llm_provider, os.environ.get("LLM_BASE_URL") or raw.get("llm_base_url"))
+        _require_base_url(llm_provider, llm_base_url, "llm_provider")
         auth_token = raw.get("auth_token") or os.environ.get("AGENT_AUTH_TOKEN")
         models = [_parse_model_spec(entry) for entry in raw.get("models") or []]
 
@@ -223,6 +297,7 @@ class AgentConfig:
             llm_provider=llm_provider,
             model_name=os.environ.get("MODEL_NAME") or raw.get("model_name", "gpt-4o-mini"),
             llm_api_key=api_key,
+            llm_base_url=llm_base_url,
             models=models,
         )
         if not config.auth_token:
