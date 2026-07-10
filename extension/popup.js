@@ -15,11 +15,11 @@ const logEl = document.getElementById("log");
 const optionsLink = document.getElementById("optionsLink");
 
 const STATUS_LABELS = {
-  connected: "Connected",
-  connecting: "Connecting…",
-  disconnected: "Disconnected",
-  unconfigured: "Not configured",
-  error: "Connection error",
+  connected: "מחובר",
+  connecting: "מתחבר…",
+  disconnected: "מנותק",
+  unconfigured: "לא מוגדר",
+  error: "שגיאת חיבור",
 };
 
 function sendToBackground(message) {
@@ -31,10 +31,10 @@ function renderStatus(status) {
   statusDot.className = `status-dot ${state}`;
   statusText.textContent = STATUS_LABELS[state] || state;
   targetUrlEl.textContent = status.targetUrl
-    ? `Target site: ${status.targetUrl}`
+    ? `אתר יעד: ${status.targetUrl}`
     : state === "unconfigured"
-      ? "Configure the server URL and token in Server settings."
-      : "Waiting for server…";
+      ? "יש להגדיר כתובת שרת וטוקן בהגדרות השרת."
+      : "ממתין לשרת…";
 
   const running = !!(status.currentTask && status.currentTask.running);
   startBtn.disabled = running || state !== "connected";

@@ -1,8 +1,8 @@
 <!doctype html>
-<html>
+<html dir="rtl" lang="he">
 <head>
   <meta charset="utf-8" />
-  <title>Web Agent</title>
+  <title>סוכן האינטרנט</title>
   <style>
     body {
       width: 360px;
@@ -97,6 +97,8 @@
       font-size: 11px;
       padding: 6px;
       border-radius: 4px;
+      direction: ltr;
+      text-align: left;
     }
     #log .entry { margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
     #log .info { color: #93c5fd; }
@@ -105,7 +107,7 @@
     #log .success { color: #4ade80; }
     footer {
       margin-top: 8px;
-      text-align: right;
+      text-align: end;
     }
     footer a {
       font-size: 11px;
@@ -116,28 +118,28 @@
   </style>
 </head>
 <body>
-  <h1><span id="statusDot" class="status-dot"></span><span id="statusText">Web Agent</span></h1>
-  <div id="targetUrl">Not connected yet.</div>
+  <h1><span id="statusDot" class="status-dot"></span><span id="statusText">סוכן האינטרנט</span></h1>
+  <div id="targetUrl">עדיין לא התחבר לשרת.</div>
 
-  <textarea id="goal" placeholder="What should the agent do on this site? e.g. 'Fill the contact form with my details and submit it'"></textarea>
+  <textarea id="goal" placeholder="מה הסוכן צריך לעשות באתר הזה? למשל: 'מלא את טופס יצירת הקשר בפרטים שלי ושלח אותו'"></textarea>
 
   <div class="row">
     <select id="approvalMode">
-      <option value="none">No approval (autonomous)</option>
-      <option value="each_action">Approve every action</option>
-      <option value="final_only">Approve only the final action</option>
+      <option value="none">ללא אישור (אוטונומי)</option>
+      <option value="each_action">אישור לפני כל פעולה</option>
+      <option value="final_only">אישור רק לפני הפעולה הסופית</option>
     </select>
-    <label class="checkbox"><input type="checkbox" id="dryRun" /> Dry run</label>
+    <label class="checkbox"><input type="checkbox" id="dryRun" /> הרצת ניסיון</label>
   </div>
 
   <div class="buttons">
-    <button id="startBtn" class="primary">Start task</button>
-    <button id="stopBtn" class="danger" disabled>Stop</button>
+    <button id="startBtn" class="primary">התחל משימה</button>
+    <button id="stopBtn" class="danger" disabled>עצור</button>
   </div>
 
   <div id="log"></div>
 
-  <footer><a id="optionsLink">Server settings</a></footer>
+  <footer><a id="optionsLink">הגדרות שרת</a></footer>
 
   <script src="popup.js"></script>
 </body>
