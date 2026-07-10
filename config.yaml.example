@@ -1,17 +1,29 @@
 # Copy this file to config.yaml and adjust the values for your environment.
-# config.yaml is git-ignored since it may end up holding an API key.
+# config.yaml is git-ignored since it may end up holding secrets.
 
 # The single internal website this agent is allowed to operate on.
-# Used both to locate the correct browser tab and as a safety anchor.
+# Sent to the extension on connect (it refuses to act on any other site) and
+# given to the LLM as context.
 target_url: "https://internal.example.local"
 
-# Chrome must already be running with remote debugging enabled, e.g.:
-#   chrome --remote-debugging-port=9222
-# The agent NEVER launches its own browser - it attaches to this one.
-remote_debug_port: 9222
+# Shared secret the browser extension must present as ?token=... when
+# opening the WebSocket connection. Required - without it every connection
+# is rejected. Generate one with, e.g.: python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Prefer setting this via the AGENT_AUTH_TOKEN environment variable instead
+# of committing it here (this is exactly how you'd set it as a Render
+# environment variable).
+# auth_token: "change-me"
 
-# Timeouts / retries
-timeout_ms: 30000
+# Local bind address/port for `uvicorn` (only used when running locally;
+# on Render the PORT environment variable takes precedence - see agent/main.py).
+host: "0.0.0.0"
+port: 8000
+
+# How long to wait for the extension to reply to a single request
+# (get_page_state / execute_action / approval) before giving up.
+request_timeout_seconds: 30.0
+
+# Retries / step budget
 retry_count: 3
 retry_delay_seconds: 2.0
 max_steps: 25
@@ -21,13 +33,9 @@ screenshot_folder: "agent/screenshots"
 log_folder: "agent/logs"
 data_folder: "agent/data"
 
-# Safety modes
+# Safety modes (the extension's popup can override these per task)
 dry_run: false                # true: report actions without performing them
 approval_mode: "none"         # one of: none, each_action, final_only
-
-# Informational only - describes the already-running Chrome instance.
-# The agent does not start a browser itself, so this does not control startup.
-headless: false
 
 # LLM provider
 llm_provider: "openai"        # one of: openai, anthropic, deepseek

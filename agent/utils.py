@@ -1,22 +1,15 @@
 """Small, dependency-free helpers shared across the agent: a generic result
-type, a timing context manager, a retry decorator, and a tolerant JSON
-extractor for parsing LLM output.
+type, a timing context manager, and a tolerant JSON extractor for parsing
+LLM output.
 """
 
 from __future__ import annotations
 
-import functools
 import json
-import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, ParamSpec, TypeVar
-
-logger = logging.getLogger(__name__)
-
-_P = ParamSpec("_P")
-_T = TypeVar("_T")
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -26,7 +19,7 @@ class ActionResult:
     Attributes:
         success: Whether the action completed successfully.
         message: Human-readable summary, always present.
-        data: Optional payload (e.g. text read from the page, a file path).
+        data: Optional payload (e.g. text read from the page, a screenshot path).
         error: Optional machine-readable error string, set only on failure.
     """
 
@@ -52,42 +45,6 @@ class Timer:
 
     def __exit__(self, *exc_info: object) -> None:
         self.elapsed = time.perf_counter() - self._start
-
-
-def retry(
-    times: int,
-    delay_seconds: float = 1.0,
-    exceptions: tuple[type[BaseException], ...] = (Exception,),
-) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
-    """Decorator that retries a callable up to ``times`` attempts with a fixed
-    delay between attempts, re-raising the last exception if all attempts fail.
-
-    Args:
-        times: Total number of attempts (must be >= 1).
-        delay_seconds: Seconds to sleep between failed attempts.
-        exceptions: Exception types that trigger a retry.
-    """
-
-    def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
-        @functools.wraps(func)
-        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            last_exc: BaseException | None = None
-            for attempt in range(1, max(1, times) + 1):
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as exc:  # noqa: BLE001 - intentional broad catch for retry
-                    last_exc = exc
-                    logger.warning(
-                        "Attempt %d/%d failed for %s: %s", attempt, times, func.__name__, exc
-                    )
-                    if attempt < times:
-                        time.sleep(delay_seconds)
-            assert last_exc is not None
-            raise last_exc
-
-        return wrapper
-
-    return decorator
 
 
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)

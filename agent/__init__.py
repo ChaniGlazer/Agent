@@ -1,1 +1,5 @@
-"""Playwright-based browser agent restricted to a single internal website."""
+"""Browser agent server restricted to a single internal website.
+
+The server holds the LLM control loop; a companion browser extension executes
+DOM actions and reports results back over a WebSocket.
+"""

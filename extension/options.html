@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Web Agent - Server settings</title>
+  <style>
+    body {
+      font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+      max-width: 480px;
+      margin: 40px auto;
+      color: #1a1a1a;
+    }
+    h1 { font-size: 18px; }
+    label { display: block; margin-top: 16px; font-weight: 600; font-size: 13px; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      margin-top: 4px;
+      font-size: 13px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .hint { font-size: 12px; color: #666; margin-top: 4px; }
+    button {
+      margin-top: 20px;
+      padding: 8px 16px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #saved { margin-left: 10px; font-size: 12px; color: #16a34a; visibility: hidden; }
+  </style>
+</head>
+<body>
+  <h1>Web Agent - server settings</h1>
+  <p>Connect this browser to your agent server (e.g. deployed on Render).</p>
+
+  <label for="serverUrl">Server URL</label>
+  <input id="serverUrl" type="text" placeholder="wss://your-app.onrender.com" />
+  <div class="hint">The WebSocket base URL of your deployed server (no trailing "/ws").</div>
+
+  <label for="token">Auth token</label>
+  <input id="token" type="password" placeholder="shared secret" />
+  <div class="hint">Must match the server's AGENT_AUTH_TOKEN / auth_token setting.</div>
+
+  <button id="saveBtn">Save</button>
+  <span id="saved">Saved.</span>
+
+  <script src="storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -7,8 +7,8 @@ next action to take - never a plan, never prose.
 
 from __future__ import annotations
 
-from agent.actions.read import PageState
 from agent.memory import Memory
+from agent.page_state import PageState
 
 #: System prompt: defines the agent's role, the strict output schema, and the
 #: safety rules it must follow (never invent selectors, never guess, prefer
@@ -52,7 +52,7 @@ def build_user_prompt(goal: str, page_state: PageState, memory: Memory) -> str:
 
     Args:
         goal: The natural-language task the agent must accomplish.
-        page_state: The current page snapshot (see :func:`agent.actions.read.describe_page_state`).
+        page_state: The current page snapshot, as reported by the browser extension.
         memory: The task's memory, used to summarize prior actions.
     """
     return (

@@ -1,4 +1,4 @@
-"""Unit tests for agent.utils: retry decorator, JSON extraction, Timer."""
+"""Unit tests for agent.utils: ActionResult, Timer, and JSON extraction."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from agent.utils import ActionResult, Timer, extract_json, retry
+from agent.utils import ActionResult, Timer, extract_json
 
 
 def test_action_result_defaults() -> None:
@@ -33,26 +33,3 @@ def test_extract_json_with_surrounding_text() -> None:
 def test_extract_json_raises_on_no_json() -> None:
     with pytest.raises(ValueError):
         extract_json("no json here at all")
-
-
-def test_retry_succeeds_after_failures() -> None:
-    calls = {"count": 0}
-
-    @retry(times=3, delay_seconds=0)
-    def flaky() -> str:
-        calls["count"] += 1
-        if calls["count"] < 3:
-            raise RuntimeError("not yet")
-        return "done"
-
-    assert flaky() == "done"
-    assert calls["count"] == 3
-
-
-def test_retry_raises_after_exhausting_attempts() -> None:
-    @retry(times=2, delay_seconds=0)
-    def always_fails() -> None:
-        raise RuntimeError("nope")
-
-    with pytest.raises(RuntimeError):
-        always_fails()

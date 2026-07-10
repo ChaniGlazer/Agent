@@ -1,18 +1,20 @@
 """The agent's main control loop: read page state -> ask the LLM -> execute
 the chosen action -> record the outcome -> repeat until the task is finished,
-the agent asks for human input, or the step budget is exhausted.
+the agent asks for human input, the operator stops it, or the step budget is
+exhausted.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
+from agent.config import AgentConfig
 from agent.llm import LLMProvider, LLMResponseError
 from agent.memory import Memory
 from agent.prompts import SYSTEM_PROMPT, build_user_prompt
 from agent.tools import ToolExecutor
-from agent.config import AgentConfig
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ class TaskResult:
         completed: Whether the agent reported the goal as accomplished.
         steps_taken: Number of LLM/action loop iterations performed.
         stop_reason: Short machine-readable reason the loop ended, one of
-            "finished", "needs_human_input: <reason>", or "max_steps_exhausted".
+            "finished", "needs_human_input: <reason>", "stopped_by_operator",
+            or "max_steps_exhausted".
     """
 
     completed: bool
@@ -39,7 +42,7 @@ class AgentController:
     Args:
         config: Active agent configuration (step budget, etc.).
         llm: LLM provider used to decide the next action at each step.
-        tools: Tool executor bound to the target page.
+        tools: Tool executor bound to the extension-controlled tab.
         memory: Memory instance the loop reads from and writes to.
     """
 
@@ -48,19 +51,29 @@ class AgentController:
         self._llm = llm
         self._tools = tools
         self._memory = memory
+        self._stop_requested = False
 
-    def run(self, goal: str) -> TaskResult:
+    def request_stop(self) -> None:
+        """Ask the loop to stop before its next step (called from outside, e.g.
+        when the extension sends a "stop_task" message)."""
+        self._stop_requested = True
+
+    async def run(self, goal: str) -> TaskResult:
         """Execute the agent loop for ``goal`` and return the final outcome."""
         logger.info("Starting task: %s", goal)
 
         for step in range(1, self._config.max_steps + 1):
+            if self._stop_requested:
+                logger.info("Stop requested by operator; ending task.")
+                return TaskResult(completed=False, steps_taken=step - 1, stop_reason="stopped_by_operator")
+
             logger.info("--- Step %d/%d ---", step, self._config.max_steps)
 
-            page_state = self._tools.read_page_state()
+            page_state = await self._tools.read_page_state()
             user_prompt = build_user_prompt(goal, page_state, self._memory)
 
             try:
-                decision = self._llm.get_next_action(SYSTEM_PROMPT, user_prompt)
+                decision = await asyncio.to_thread(self._llm.get_next_action, SYSTEM_PROMPT, user_prompt)
             except LLMResponseError as exc:
                 logger.error("LLM produced an invalid response: %s", exc)
                 self._memory.errors.append(str(exc))
@@ -78,13 +91,10 @@ class AgentController:
                 logger.info("Agent reports the task is already complete: %s", reason)
                 return TaskResult(completed=True, steps_taken=step, stop_reason="finished")
 
-            result = self._tools.execute(
+            result = await self._tools.execute(
                 action=action,
                 selector=decision.get("selector"),
                 text=decision.get("text"),
-                key=decision.get("text"),
-                file_path=decision.get("text"),
-                url=decision.get("text"),
                 is_final=bool(decision.get("finished")),
             )
 

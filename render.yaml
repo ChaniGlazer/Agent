@@ -1,0 +1,38 @@
+# Render Blueprint - see https://render.com/docs/blueprint-spec
+#
+# Deploys the agent server as a Render Web Service. The service holds no
+# browser and no Playwright dependency; it only speaks the WebSocket
+# protocol to the companion browser extension (see extension/).
+#
+# After the first deploy, set TARGET_URL/AGENT_AUTH_TOKEN/<provider>_API_KEY
+# for real in the Render dashboard (Environment tab) - the values below are
+# placeholders that intentionally fail closed (empty auth token = no
+# connection is ever accepted).
+services:
+  - type: web
+    name: web-agent
+    runtime: python
+    plan: starter
+    # config.yaml is git-ignored (it's meant to hold secrets locally), so the
+    # build step seeds it from the tracked example; every value that matters
+    # in production is then supplied via the environment variables below.
+    buildCommand: pip install -r requirements.txt && cp -n config.yaml.example config.yaml
+    startCommand: python -m agent.main --config config.yaml
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: TARGET_URL
+        sync: false
+      - key: AGENT_AUTH_TOKEN
+        sync: false
+      - key: LLM_PROVIDER
+        value: openai
+      - key: MODEL_NAME
+        value: gpt-4o-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
