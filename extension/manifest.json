@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Web Agent Connector",
+  "version": "1.0.0",
+  "description": "Connects this browser to your Web Agent server and executes its browser actions on a single configured internal website.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "debugger",
+    "downloads",
+    "notifications"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Web Agent",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_page": "options.html",
+  "minimum_chrome_version": "116"
+}
