@@ -1,6 +1,7 @@
 /**
  * Content script: runs inside the target page and does the actual DOM work
- * (reading page state, clicking, filling, waiting, scrolling, pressing keys).
+ * (reading page state, clicking, filling, waiting, scrolling, pressing keys,
+ * coordinate-based tapping, and typing into whatever currently has focus).
  * Injected on demand by background.js - not declared as a static content
  * script in manifest.json - so it only ever runs against the target site,
  * for as long as an action is in flight.
@@ -58,16 +59,23 @@
     const elements = Array.from(document.querySelectorAll(SELECTOR))
       .filter(isVisible)
       .slice(0, 60)
-      .map((el) => ({
-        tag: el.tagName.toLowerCase(),
-        type: el.getAttribute("type") || "",
-        selector: buildSelector(el),
-        text: (el.innerText || el.value || el.placeholder || "").trim().slice(0, 80),
-        placeholder: el.getAttribute("placeholder") || "",
-        name: el.getAttribute("name") || "",
-        role: el.getAttribute("role") || "",
-        disabled: !!el.disabled,
-      }));
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          tag: el.tagName.toLowerCase(),
+          type: el.getAttribute("type") || "",
+          selector: buildSelector(el),
+          text: (el.innerText || el.value || el.placeholder || "").trim().slice(0, 80),
+          placeholder: el.getAttribute("placeholder") || "",
+          name: el.getAttribute("name") || "",
+          role: el.getAttribute("role") || "",
+          disabled: !!el.disabled,
+          // Viewport-relative center point, for the "tap" fallback action when
+          // no reliable selector exists (e.g. canvas-drawn or map/chart UIs).
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+        };
+      });
 
     return {
       url: window.location.href,
@@ -183,15 +191,82 @@
     });
   }
 
-  function doScroll(selector) {
+  const SCROLL_STEP_PX = 800;
+  const SCROLL_DIRECTIONS = {
+    up: [0, -SCROLL_STEP_PX],
+    down: [0, SCROLL_STEP_PX],
+    left: [-SCROLL_STEP_PX, 0],
+    right: [SCROLL_STEP_PX, 0],
+  };
+
+  function doScroll(selector, text) {
     if (selector) {
       const el = findElement(selector);
       if (!el) return result(false, `Element not found: '${selector}'.`, null, "not_found");
       el.scrollIntoView({ block: "center", inline: "center" });
       return result(true, `Scrolled '${selector}' into view.`);
     }
-    window.scrollBy(0, 1000);
+
+    const spec = (text || "").trim().toLowerCase();
+    if (spec in SCROLL_DIRECTIONS) {
+      const [dx, dy] = SCROLL_DIRECTIONS[spec];
+      window.scrollBy(dx, dy);
+      return result(true, `Scrolled ${spec}.`);
+    }
+    const amount = Number(spec);
+    if (spec && Number.isFinite(amount)) {
+      window.scrollBy(0, amount);
+      return result(true, `Scrolled by ${amount}px.`);
+    }
+
+    window.scrollBy(0, SCROLL_STEP_PX);
     return result(true, "Scrolled the page down.");
+  }
+
+  function doTap(text) {
+    const match = (text || "").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (!match) {
+      return result(false, "tap requires text in the form 'x,y' (viewport pixel coordinates).", null, "missing_coordinates");
+    }
+    const x = Number(match[1]);
+    const y = Number(match[2]);
+    const el = document.elementFromPoint(x, y);
+    if (!el) {
+      return result(false, `No element found at (${x}, ${y}).`, null, "not_found");
+    }
+    el.scrollIntoView({ block: "center", inline: "center" });
+    el.click();
+    return result(true, `Tapped the element at (${x}, ${y}).`);
+  }
+
+  function doType(text) {
+    const el = document.activeElement;
+    if (!el || el === document.body) {
+      return result(false, "No element is currently focused to type into - click/tap it first.", null, "no_focus");
+    }
+    const isContentEditable = !!el.isContentEditable;
+    const isTextInput = el.tagName === "INPUT" || el.tagName === "TEXTAREA";
+    if (!isContentEditable && !isTextInput) {
+      return result(false, "The focused element is not editable.", null, "not_editable");
+    }
+
+    const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const nativeSetter = isTextInput ? Object.getOwnPropertyDescriptor(proto, "value")?.set : null;
+
+    for (const char of text ?? "") {
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true, cancelable: true }));
+      if (isContentEditable) {
+        document.execCommand("insertText", false, char);
+      } else {
+        const newValue = (el.value ?? "") + char;
+        if (nativeSetter) nativeSetter.call(el, newValue);
+        else el.value = newValue;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      el.dispatchEvent(new KeyboardEvent("keyup", { key: char, bubbles: true, cancelable: true }));
+    }
+    if (isTextInput) el.dispatchEvent(new Event("change", { bubbles: true }));
+    return result(true, `Typed into the focused ${el.tagName.toLowerCase()} element.`);
   }
 
   function doPress(selector, key) {
@@ -217,9 +292,13 @@
       case "wait":
         return await doWait(selector);
       case "scroll":
-        return doScroll(selector);
+        return doScroll(selector, text);
       case "press":
         return doPress(selector, text);
+      case "tap":
+        return doTap(text);
+      case "type":
+        return doType(text);
       case "read_href":
         return doReadHref(selector);
       case "collect_links":

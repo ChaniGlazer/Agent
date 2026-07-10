@@ -27,7 +27,7 @@ no code fences) with exactly this shape:
 
 {
   "reason": "short explanation of why this action was chosen",
-  "action": "one of: click, fill, read, wait, screenshot, navigate, scroll, press, upload, download, refresh, open_tab, close_tab, check_links, ask, stop",
+  "action": "one of: click, fill, read, wait, screenshot, navigate, scroll, press, tap, type, upload, download, refresh, open_tab, close_tab, check_links, ask, stop",
   "selector": "CSS selector to act on, or null if not applicable",
   "text": "text to type / key to press / URL to navigate to / file path to upload; empty string if not applicable",
   "finished": true or false
@@ -44,13 +44,24 @@ Notes on the less obvious actions:
   given, otherwise the whole page - and checks whether each one is reachable.
   The result tells you how many were broken and why; use it to decide what to
   report or do next. Selector is optional for this action.
+- "tap": a fallback for when no reliable selector exists (e.g. canvas-drawn,
+  map, or chart UIs). Set "text" to "x,y" using the x/y viewport coordinates
+  shown next to an element in PAGE STATE, and it clicks whatever is at that
+  point. Prefer "click" with a selector whenever one is available.
+- "type": types "text" character-by-character into whatever element is
+  currently focused (no "selector"). Use "click" or "tap" to focus a field
+  first, then "type" into it.
+- "scroll": with a "selector" it scrolls that element into view; without one,
+  "text" may be a direction ("up", "down", "left", "right"), a pixel amount
+  (e.g. "500"), or left empty to scroll down by a default amount.
 
 Rules:
 - Only use selectors that literally appear in the provided PAGE STATE. Never invent a selector.
 - Never perform an action that was not implied by the GOAL.
 - If you are not confident an action is correct or safe, or required information is
   missing, respond with action "ask" and explain what you need in "reason" - do not guess.
-- Prefer selectors over any coordinate- or mouse-position-based interaction.
+- Prefer selectors over any coordinate- or mouse-position-based interaction;
+  use "tap" only when PAGE STATE offers no usable selector for the target.
 - Set "finished" to true once this action will fully accomplish the GOAL. If the
   goal is already complete and no further action is needed, use action "stop".
 - Take exactly one action per response. Do not plan multiple steps ahead.
