@@ -23,6 +23,14 @@ let currentTask = null; // { goal, running }
 let reconnectTimer = null;
 const pendingApprovals = new Map(); // notificationId -> resolve
 
+// Which tab actions currently apply to. null means "resolve from targetUrl"
+// (the normal case); open_tab pushes the previous tab here and switches to
+// the new one, close_tab pops back. Reset whenever a new task starts.
+let workingTabId = null;
+const tabStack = [];
+const LINK_CHECK_TIMEOUT_MS = 8000;
+const LINK_CHECK_CONCURRENCY = 5;
+
 // --------------------------------------------------------------------- //
 // Lifecycle
 // --------------------------------------------------------------------- //
@@ -182,6 +190,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse(await getStatusSnapshot());
         break;
       case "start_task":
+        workingTabId = null;
+        tabStack.length = 0;
         currentTask = { goal: message.goal, running: true };
         sendToServer({
           type: "start_task",
@@ -231,6 +241,16 @@ async function pushLog(level, text) {
 // --------------------------------------------------------------------- //
 
 async function findTargetTab() {
+  if (workingTabId !== null) {
+    try {
+      return await chrome.tabs.get(workingTabId);
+    } catch {
+      // The tab was closed outside our control (e.g. by the user); fall
+      // back to the normal target_url resolution below.
+      workingTabId = null;
+    }
+  }
+
   if (!targetUrl) {
     throw new Error("No target_url received from the server yet.");
   }
@@ -306,9 +326,105 @@ async function performAction(action, selector, text, _isFinal) {
       return await uploadFile(tab.id, selector, text);
     case "download":
       return await downloadViaClick(tab.id, selector);
+    case "open_tab":
+      return await openTab(tab.id, selector);
+    case "close_tab":
+      return await closeTab();
+    case "check_links":
+      return await checkLinks(tab.id, selector);
     default:
       await ensureContentScript(tab.id);
       return await chrome.tabs.sendMessage(tab.id, { kind: "execute_action", action, selector, text });
+  }
+}
+
+async function openTab(currentTabId, selector) {
+  if (!selector) return { success: false, message: "open_tab requires a selector.", error: "missing_selector" };
+  await ensureContentScript(currentTabId);
+  const hrefResult = await chrome.tabs.sendMessage(currentTabId, {
+    kind: "execute_action",
+    action: "read_href",
+    selector,
+  });
+  if (!hrefResult.success || !hrefResult.data) {
+    return {
+      success: false,
+      message: hrefResult.message || `Could not resolve a link for '${selector}'.`,
+      error: hrefResult.error || "no_href",
+    };
+  }
+  try {
+    const newTab = await chrome.tabs.create({ url: hrefResult.data, active: true, openerTabId: currentTabId });
+    await waitForTabComplete(newTab.id);
+    tabStack.push(currentTabId);
+    workingTabId = newTab.id;
+    return { success: true, message: `Opened '${hrefResult.data}' in a new tab.`, data: hrefResult.data };
+  } catch (err) {
+    return { success: false, message: "Failed to open a new tab.", error: String(err) };
+  }
+}
+
+async function closeTab() {
+  if (workingTabId === null || tabStack.length === 0) {
+    return { success: false, message: "There is no extra tab to close.", error: "no_tab_to_close" };
+  }
+  const toClose = workingTabId;
+  const previous = tabStack.pop();
+  try {
+    await chrome.tabs.remove(toClose);
+  } catch {
+    /* already closed, e.g. by the user */
+  }
+  workingTabId = previous;
+  return { success: true, message: "Closed the tab and returned to the previous one." };
+}
+
+async function checkLinks(tabId, selector) {
+  await ensureContentScript(tabId);
+  const collected = await chrome.tabs.sendMessage(tabId, { kind: "execute_action", action: "collect_links", selector });
+  if (!collected.success) return collected;
+
+  const links = collected.data || [];
+  if (links.length === 0) {
+    return { success: true, message: "No links found to check.", data: { total: 0, ok_count: 0, broken: [] } };
+  }
+
+  const broken = [];
+  let okCount = 0;
+  let index = 0;
+  async function worker() {
+    while (index < links.length) {
+      const link = links[index++];
+      const outcome = await checkOneLink(link.href);
+      if (outcome.ok) okCount += 1;
+      else broken.push({ href: link.href, text: link.text, reason: outcome.reason });
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(LINK_CHECK_CONCURRENCY, links.length) }, worker));
+
+  const preview = broken
+    .slice(0, 10)
+    .map((b) => `${b.href} (${b.reason})`)
+    .join("; ");
+  const message = broken.length
+    ? `Checked ${links.length} link(s): ${broken.length} broken - ${preview}${broken.length > 10 ? "; ..." : ""}`
+    : `Checked ${links.length} link(s): all OK.`;
+  return { success: true, message, data: { total: links.length, ok_count: okCount, broken } };
+}
+
+async function checkOneLink(href) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LINK_CHECK_TIMEOUT_MS);
+  try {
+    let response = await fetch(href, { method: "HEAD", redirect: "follow", signal: controller.signal });
+    if (response.status === 405 || response.status === 501) {
+      response = await fetch(href, { method: "GET", redirect: "follow", signal: controller.signal });
+    }
+    return { ok: response.ok, reason: response.ok ? null : `HTTP ${response.status}` };
+  } catch (err) {
+    return { ok: false, reason: err && err.name === "AbortError" ? "timeout" : String(err) };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

@@ -46,7 +46,7 @@ ToolExecutor
 | `agent/config.py` | טעינת `config.yaml` + משתני סביבה ל-`AgentConfig` |
 | `agent/connection.py` | `ExtensionConnection`/`RemoteBrowser` - התאמת בקשה↔תשובה מול התוסף |
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
-| `agent/tools.py` | מימוש 11 ה-Tools, dry-run, approval, retry/recovery |
+| `agent/tools.py` | מימוש 14 ה-Tools, dry-run, approval, retry/recovery |
 | `agent/llm.py` | הפשטה לספקי LLM (OpenAI / Anthropic / DeepSeek) |
 | `agent/router.py` | Model Router: ניתוב לפי סוג צעד, תקציבי שימוש, ו-fallback על Rate Limit |
 | `agent/prompts.py` | תבניות הפרומפט למודל |
@@ -204,11 +204,32 @@ python -m agent.main --config config.yaml
 3. כתבו את המשימה בשפה חופשית, בחרו מצב אישור ו/או Dry Run, ולחצו **Start task**.
 4. עקבו אחרי ההתקדמות בלוג החי בפופאפ.
 
+### דוגמה: טיפול בדף פניות
+
+משימה כמו "עברי על הפניות הפתוחות ובדקי את הקישורים שבתוכן" מתבצעת אוטומטית
+בעזרת `open_tab`/`close_tab`/`check_links` בלי צורך בהגדרה נוספת - רק כותבים
+את זה בשפה חופשית בפופאפ, למשל:
+
+> "עברי על כל הפניות בעמוד שמסומנות כ'לא טופלו', פתחי כל אחת בכרטיסייה
+> חדשה, בדקי אם הקישורים בתוכה תקינים, וסגרי אותה לפני שעוברים לבאה."
+
+הסוכן ילולאה כך על כל פנייה: יזהה מהעמוד הראשי (לפי הטקסט של כל שורה/קישור
+ב-PAGE STATE) אילו פניות מסומנות כלא-מטופלות → `open_tab` על הקישור שלה →
+`check_links` בתוך הפנייה → `close_tab` בחזרה לרשימה → הפנייה הבאה. ברגע
+שכל הפניות טופלו, הוא מסמן `finished: true` עם סיכום (כמה פניות נבדקו, אילו
+נמצאו בהן קישורים שבורים) ב-`reason` שלו, שנרשם בלוג.
+
+**טיפ**: כדאי להתחיל עם מצב אישור **"אישור לפני כל פעולה"** בהרצה הראשונה
+על דף פניות חדש, כדי לוודא שהסוכן מזהה נכון אילו פניות "לא טופלו" (התלוי
+לגמרי בטקסט/עיצוב שהאתר שלכם משתמש בו לסימון סטטוס) - ורק אז לעבור למצב
+אוטונומי.
+
 ## מצבי בטיחות
 
 * **Dry Run** - פעולות משנות-מצב (click, fill, press, navigate, upload,
-  download, refresh, scroll) רק נרשמות ומדווחות, לא מבוצעות בפועל. פעולות
-  קריאה (`read`, `wait`, `screenshot`) עדיין רצות כדי לתת למודל הקשר אמיתי.
+  download, refresh, scroll, open_tab, close_tab) רק נרשמות ומדווחות, לא
+  מבוצעות בפועל. פעולות קריאה (`read`, `wait`, `screenshot`, `check_links`)
+  עדיין רצות כדי לתת למודל הקשר אמיתי.
 * **Approval Mode**:
   * `none` - ריצה אוטונומית מלאה.
   * `each_action` - לפני **כל** פעולה נשלחת התראת מערכת (notification) עם
@@ -244,6 +265,22 @@ python -m agent.main --config config.yaml
 | `screenshot()` | צילום החלון הנראה (viewport) - **לא** עמוד מלא | `background.js` (`chrome.tabs.captureVisibleTab`) |
 | `upload(file)` | העלאת קובץ מקומי ל-`<input type=file>` | `background.js` דרך `chrome.debugger` |
 | `download()` | לחיצה שמפעילה הורדה | `background.js` + `content.js` |
+| `open_tab(selector)` | פותח את הקישור שמאחורי הסלקטור **בכרטיסייה חדשה**, והופך אותה לכרטיסייה הפעילה מהצעד הבא | `background.js` (`chrome.tabs.create`) |
+| `close_tab()` | סוגר את הכרטיסייה שנפתחה לאחרונה עם `open_tab` וחוזר לכרטיסייה הקודמת | `background.js` (`chrome.tabs.remove`) |
+| `check_links(selector?)` | סורק קישורים (בתוך `selector` אם ניתן, אחרת בכל העמוד) ובודק אם כל אחד מהם תקין (מבצע בקשת רשת ובודק קוד תגובה) | `background.js` (`fetch`) + `content.js` (איסוף הקישורים) |
+
+**איך `open_tab`/`close_tab` עובדים**: הסוכן עוקב אחרי "כרטיסייה פעילה" יחידה
+בכל רגע נתון. `open_tab` שומר את הכרטיסייה הנוכחית בערימה ועובר לחדשה - כל
+הפעולות הבאות (`read`, `click`, `check_links` וכו') פועלות על הכרטיסייה
+החדשה, עד ש-`close_tab` סוגר אותה וחוזר לקודמת. כך אפשר לעבור פריט-פריט
+ברשימה: לפתוח, לבדוק, לסגור, לפריט הבא.
+
+**איך `check_links` עובד**: `content.js` אוסף את כל תגיות ה-`<a href>`
+בתחום שהוגדר (מדלג על `#`, `javascript:`, `mailto:`, `tel:`), ו-`background.js`
+שולח לכל קישור בקשת HTTP (`HEAD`, ועם fallback ל-`GET`) כדי לבדוק אם הוא
+מחזיר תשובה תקינה. התוצאה - מספר הקישורים שנבדקו, כמה תקינים וכמה שבורים
+(עם הסיבה: קוד HTTP או timeout) - מוצגת גם בהודעה הקצרה שהמודל רואה בצעד
+הבא, כדי שיוכל להחליט מה לדווח.
 
 ### מגבלות ידועות (נובעות מ-API-ים של תוספי דפדפן)
 

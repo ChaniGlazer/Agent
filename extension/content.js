@@ -6,8 +6,10 @@
  * for as long as an action is in flight.
  *
  * Tab-level operations that content scripts cannot perform (navigate,
- * refresh, screenshot, upload, download) are handled directly in
- * background.js instead.
+ * refresh, screenshot, upload, download, open_tab, close_tab, and the
+ * network fetches behind check_links) are handled directly in
+ * background.js instead; this script only supplies the link data
+ * (read_href / collect_links) that those operations need from the page.
  */
 
 (() => {
@@ -114,7 +116,53 @@
     if (!el) return result(false, `Element not found: '${selector}'.`, null, "not_found");
     const tag = el.tagName.toLowerCase();
     const value = tag === "input" || tag === "textarea" || tag === "select" ? el.value : el.innerText;
-    return result(true, `Read content of '${selector}'.`, value);
+    const preview = (value ?? "").toString().trim().slice(0, 200);
+    return result(true, `Read '${selector}': "${preview}"`, value);
+  }
+
+  function resolveHref(el) {
+    const anchor = el.closest ? el.closest("a[href]") : null;
+    const href = anchor ? anchor.getAttribute("href") : el.getAttribute && el.getAttribute("href");
+    if (!href) return null;
+    try {
+      return new URL(href, window.location.href).href;
+    } catch {
+      return null;
+    }
+  }
+
+  function doReadHref(selector) {
+    const el = findElement(selector);
+    if (!el) return result(false, `Element not found: '${selector}'.`, null, "not_found");
+    const href = resolveHref(el);
+    if (!href) return result(false, `'${selector}' is not a link (no resolvable href).`, null, "no_href");
+    return result(true, `Resolved href for '${selector}'.`, href);
+  }
+
+  const SKIPPED_HREF_PREFIXES = ["#", "javascript:", "mailto:", "tel:"];
+  const MAX_LINKS = 40;
+
+  function doCollectLinks(selector) {
+    const root = selector ? findElement(selector) : document;
+    if (selector && !root) return result(false, `Element not found: '${selector}'.`, null, "not_found");
+
+    const seen = new Set();
+    const links = [];
+    for (const anchor of root.querySelectorAll("a[href]")) {
+      const raw = anchor.getAttribute("href") || "";
+      if (!raw || SKIPPED_HREF_PREFIXES.some((prefix) => raw.startsWith(prefix))) continue;
+      let absolute;
+      try {
+        absolute = new URL(raw, window.location.href).href;
+      } catch {
+        continue;
+      }
+      if (seen.has(absolute)) continue;
+      seen.add(absolute);
+      links.push({ href: absolute, text: (anchor.innerText || "").trim().slice(0, 80) });
+      if (links.length >= MAX_LINKS) break;
+    }
+    return result(true, `Collected ${links.length} link(s).`, links);
   }
 
   function doWait(selector) {
@@ -172,6 +220,10 @@
         return doScroll(selector);
       case "press":
         return doPress(selector, text);
+      case "read_href":
+        return doReadHref(selector);
+      case "collect_links":
+        return doCollectLinks(selector);
       default:
         return result(false, `Action '${action}' is not handled by the content script.`, null, "unsupported_here");
     }

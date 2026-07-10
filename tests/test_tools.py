@@ -177,6 +177,47 @@ async def test_unknown_action_is_reported_without_touching_the_browser(tmp_path:
     assert browser.execute_calls == []
 
 
+async def test_open_tab_and_close_tab_are_skipped_in_dry_run(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    config = _make_config(tmp_path, dry_run=True)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    open_result = await tools.execute("open_tab", selector="#row-1")
+    close_result = await tools.execute("close_tab")
+
+    assert open_result.success is True and "[DRY RUN]" in open_result.message
+    assert close_result.success is True and "[DRY RUN]" in close_result.message
+    assert browser.execute_calls == []
+
+
+async def test_check_links_runs_even_in_dry_run_and_reports_broken_links(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    broken = [{"href": "https://internal.example.local/dead", "text": "dead link", "reason": "HTTP 404"}]
+    browser.action_results["check_links"] = [
+        ActionResult(True, "Checked 3 link(s): 1 broken - https://internal.example.local/dead (HTTP 404)", data={"total": 3, "ok_count": 2, "broken": broken})
+    ]
+    config = _make_config(tmp_path, dry_run=True)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    result = await tools.execute("check_links", selector="#inquiry-body")
+
+    assert result.success is True
+    assert result.data["broken"] == broken
+    assert browser.execute_calls == [("check_links", "#inquiry-body", None, False)]
+
+
+async def test_open_tab_failure_without_a_resolvable_link_is_reported(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    browser.action_results["open_tab"] = [ActionResult(False, "no link", error="no_href")] * 2
+    config = _make_config(tmp_path, retry_count=1)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    result = await tools.execute("open_tab", selector="#not-a-link")
+
+    assert result.success is False
+    assert result.error == "no_href"
+
+
 async def test_read_page_state_delegates_to_browser(tmp_path: Path) -> None:
     browser = FakeRemoteBrowser()
     config = _make_config(tmp_path)
