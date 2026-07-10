@@ -166,10 +166,17 @@ python -m agent.main --config config.yaml
 
 ### פריסה ל-Render
 
-בריפו קיים קובץ `render.yaml` (Blueprint) שמגדיר Web Service מוכן:
+השירות מוגדר כ-**Web Service** של Render (לא Background Worker / Static
+Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כתובת ציבורית
+(`https://`/`wss://`) שהתוסף יכול להתחבר אליה, וגם התומך ב-WebSocket
+(שעליו כל התקשורת עם התוסף מתבססת) ובבדיקת חיות (`healthCheckPath`).
+
+**אפשרות א' - Blueprint (מומלץ, אוטומטי):** בריפו קיים קובץ `render.yaml`
+שכבר מגדיר את השירות עם כל השדות הנדרשים ל-Web Service (`type: web`,
+`runtime: python`, `buildCommand`, `startCommand`, `healthCheckPath`):
 
 1. ב-Render: **New → Blueprint**, חברו את הריפו הזה.
-2. Render יזהה את `render.yaml` וייצור שירות בשם `web-agent`.
+2. Render יזהה את `render.yaml` וייצור שירות מסוג Web Service בשם `web-agent`.
 3. לאחר הפריסה הראשונה, בכרטיסייה **Environment** של השירות הגדירו:
    * `TARGET_URL` - כתובת האתר הפנימי.
    * `AGENT_AUTH_TOKEN` - סוד משותף (ייצרו עם `python -c "import secrets; print(secrets.token_urlsafe(32))"`).
@@ -177,8 +184,25 @@ python -m agent.main --config config.yaml
 4. Render יפרוס מחדש אוטומטית. כתובת ה-WebSocket שלכם תהיה
    `wss://<שם-השירות>.onrender.com/ws`.
 
+**אפשרות ב' - יצירה ידנית של Web Service** (אם מעדיפים לא להשתמש ב-Blueprint):
+
+1. ב-Render: **New → Web Service**, חברו את הריפו הזה.
+2. בטופס ההגדרה:
+   * **Language/Runtime**: Python 3
+   * **Build Command**: `pip install -r requirements.txt && cp -n config.yaml.example config.yaml`
+   * **Start Command**: `python -m agent.main --config config.yaml`
+   * **Health Check Path** (בהגדרות מתקדמות): `/healthz`
+   * **Instance Type**: כל תוכנית שאינה Static - `Starter` מספיק להתחלה.
+3. תחת **Environment**, הוסיפו את אותם משתני הסביבה שמפורטים באפשרות א'
+   (`TARGET_URL`, `AGENT_AUTH_TOKEN`, `LLM_PROVIDER`, `MODEL_NAME`, ומפתח
+   ה-API הרלוונטי).
+4. Render יבנה ויפרוס את השירות ויקצה לו כתובת `https://<שם-השירות>.onrender.com`
+   (והתוסף מתחבר ל-`wss://<אותה-כתובת>/ws`).
+
+בשני המקרים אין צורך להגדיר `PORT` ידנית - Render מזריק אותו אוטומטית
+כמשתנה סביבה, ו-`agent/main.py` קורא אותו ומאזין עליו (ראו `agent/main.py`).
 השרת אינו תלוי ב-Playwright ואינו זקוק לדפדפן מותקן ב-Render - זו בדיוק
-הסיבה שהוא יכול לרוץ שם בקלות.
+הסיבה שהוא יכול לרוץ על Web Service רגיל בלי שום תצורה מיוחדת.
 
 ## חלק 2: תוסף ה-Chrome
 
