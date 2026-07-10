@@ -67,7 +67,14 @@ def test_healthz_and_root(tmp_path: Path) -> None:
     client = TestClient(app)
 
     assert client.get("/healthz").json() == {"status": "ok"}
-    assert client.get("/").json()["target_url"] == config.target_url
+
+    root_response = client.get("/")
+    assert root_response.status_code == 200
+    assert root_response.headers["content-type"].startswith("text/html")
+    assert "CodeBloom" in root_response.text
+    # The landing page must never leak what this backend actually does.
+    assert config.target_url not in root_response.text
+    assert "target_url" not in root_response.text
 
 
 def test_websocket_rejects_invalid_token(tmp_path: Path) -> None:

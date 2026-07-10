@@ -189,6 +189,8 @@ python -m agent.main --config config.yaml
 השרת עולה על `http://localhost:8000` (או הפורט שהוגדר), עם:
 
 * `GET /healthz` - בדיקת חיות.
+* `GET /` - דף נחיתה ציבורי (`agent/static/index.html`) עם מיתוג כללי של החברה;
+  לא חושף שום מידע על מה שהשרת בפועל עושה (אין JSON, אין `target_url`).
 * `WS /ws?token=...` - ה-endpoint שהתוסף מתחבר אליו.
 
 ### פריסה ל-Render
