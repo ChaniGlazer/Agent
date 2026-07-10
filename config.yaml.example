@@ -38,13 +38,31 @@ dry_run: false                # true: report actions without performing them
 approval_mode: "none"         # one of: none, each_action, final_only
 
 # LLM provider (single-model mode)
-llm_provider: "openai"        # one of: openai, anthropic, deepseek
-model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (anthropic), "deepseek-chat" (deepseek)
+llm_provider: "openai"        # openai | anthropic | deepseek | google | groq | together |
+                               # openrouter | huggingface | mistral | cohere | cloudflare | nvidia
+model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (anthropic),
+                               # "deepseek-chat" (deepseek), "gemini-2.5-flash" (google), ...
+
+# Every provider except openai/anthropic/deepseek is OpenAI-compatible and
+# resolves to a known default endpoint automatically (see agent/config.py,
+# _DEFAULT_BASE_URL_BY_PROVIDER) - you only need 'llm_base_url' to override
+# that default, or for Cloudflare Workers AI, whose endpoint embeds your own
+# account ID and therefore has no safe default:
+# llm_base_url: "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1"
 
 # Prefer setting the key via environment variable instead of committing it here:
 #   export OPENAI_API_KEY="sk-..."
 #   export ANTHROPIC_API_KEY="sk-ant-..."
 #   export DEEPSEEK_API_KEY="sk-..."
+#   export GOOGLE_API_KEY="..."        (Google AI Studio - aistudio.google.com)
+#   export GROQ_API_KEY="gsk_..."
+#   export TOGETHER_API_KEY="..."
+#   export OPENROUTER_API_KEY="sk-or-..."
+#   export HF_TOKEN="hf_..."           (Hugging Face)
+#   export MISTRAL_API_KEY="..."
+#   export COHERE_API_KEY="..."
+#   export CLOUDFLARE_API_TOKEN="..."
+#   export NVIDIA_API_KEY="nvapi-..."
 # llm_api_key: "sk-..."
 
 # --- Multi-model routing (optional) ------------------------------------
@@ -59,20 +77,36 @@ model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (
 #   * cooldown_seconds: how long to bench a model after the provider returns
 #     a rate-limit/overloaded error (HTTP 429/529) before trying it again
 # API keys resolve from the provider's environment variable when 'api_key'
-# is omitted (OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY).
+# is omitted; base_url resolves from that provider's known default when
+# omitted (again, except Cloudflare - see above).
+#
+# Example: a "0 cost, as long as it lasts" cascade across free tiers, with a
+# small paid model as the final safety net so a task never just stops:
 #
 # models:
-#   - provider: "deepseek"
+#   - provider: "google"
+#     model_name: "gemini-2.5-flash"
+#     tasks: ["simple", "complex"]
+#     priority: 1
+#     max_requests_per_minute: 10     # Google AI Studio's free tier is per-model/region - check
+#     max_requests_per_day: 250       # https://ai.google.dev/gemini-api/docs/rate-limits and adjust
+#   - provider: "groq"
+#     model_name: "llama-3.3-70b-versatile"
+#     tasks: ["simple"]               # fast, good for routine continuation steps
+#     priority: 2
+#     max_requests_per_minute: 30     # see https://console.groq.com/docs/rate-limits
+#   - provider: "openrouter"
+#     model_name: "meta-llama/llama-3.1-8b-instruct:free"  # note the ":free" suffix
+#     tasks: ["simple", "complex"]
+#     priority: 3
+#   - provider: "huggingface"
+#     model_name: "meta-llama/Llama-3.1-8B-Instruct"
+#     tasks: ["simple", "complex"]
+#     priority: 4
+#   - provider: "deepseek"            # cheap paid fallback so the task never dead-ends
 #     model_name: "deepseek-chat"
-#     tasks: ["simple"]              # cheap model for routine steps
-#     priority: 1
-#     max_requests_per_minute: 30
-#     max_requests_per_day: 2000
-#   - provider: "anthropic"
-#     model_name: "claude-sonnet-5"
-#     tasks: ["complex"]             # strong model for planning/recovery
-#     priority: 1
-#   - provider: "openai"
-#     model_name: "gpt-4o-mini"
-#     tasks: ["simple", "complex"]   # general fallback for everything
+#     tasks: ["simple", "complex"]
 #     priority: 9
+#
+# Quotas change often and vary by account/region - check each provider's
+# pricing/limits page before relying on this for anything serious.
