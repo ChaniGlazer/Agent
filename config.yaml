@@ -1,0 +1,78 @@
+# Copy this file to config.yaml and adjust the values for your environment.
+# config.yaml is git-ignored since it may end up holding secrets.
+
+# The single internal website this agent is allowed to operate on.
+# Sent to the extension on connect (it refuses to act on any other site) and
+# given to the LLM as context.
+target_url: "https://internal.example.local"
+
+# Shared secret the browser extension must present as ?token=... when
+# opening the WebSocket connection. Required - without it every connection
+# is rejected. Generate one with, e.g.: python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Prefer setting this via the AGENT_AUTH_TOKEN environment variable instead
+# of committing it here (this is exactly how you'd set it as a Render
+# environment variable).
+# auth_token: "change-me"
+
+# Local bind address/port for `uvicorn` (only used when running locally;
+# on Render the PORT environment variable takes precedence - see agent/main.py).
+host: "0.0.0.0"
+port: 8000
+
+# How long to wait for the extension to reply to a single request
+# (get_page_state / execute_action / approval) before giving up.
+request_timeout_seconds: 30.0
+
+# Retries / step budget
+retry_count: 3
+retry_delay_seconds: 2.0
+max_steps: 25
+
+# Folders (created automatically if missing)
+screenshot_folder: "agent/screenshots"
+log_folder: "agent/logs"
+data_folder: "agent/data"
+
+# Safety modes (the extension's popup can override these per task)
+dry_run: false                # true: report actions without performing them
+approval_mode: "none"         # one of: none, each_action, final_only
+
+# LLM provider (single-model mode)
+llm_provider: "openai"        # one of: openai, anthropic, deepseek
+model_name: "gpt-4o-mini"     # e.g. "gpt-4o-mini" (openai), "claude-sonnet-5" (anthropic), "deepseek-chat" (deepseek)
+
+# Prefer setting the key via environment variable instead of committing it here:
+#   export OPENAI_API_KEY="sk-..."
+#   export ANTHROPIC_API_KEY="sk-ant-..."
+#   export DEEPSEEK_API_KEY="sk-..."
+# llm_api_key: "sk-..."
+
+# --- Multi-model routing (optional) ------------------------------------
+# When 'models' is set, it replaces the single llm_provider/model_name pair.
+# Each step of a task is classified as "complex" (first step of a task, or a
+# step right after a failure - needs planning/recovery reasoning) or "simple"
+# (routine continuation), and routed to the best available model:
+#   * tasks:    which step kinds this model should serve
+#   * priority: lower = preferred (ties keep the order written here)
+#   * max_requests_per_minute / max_requests_per_day: local usage budgets;
+#     once spent, traffic moves to the next model until the window frees up
+#   * cooldown_seconds: how long to bench a model after the provider returns
+#     a rate-limit/overloaded error (HTTP 429/529) before trying it again
+# API keys resolve from the provider's environment variable when 'api_key'
+# is omitted (OPENAI_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY).
+#
+# models:
+#   - provider: "deepseek"
+#     model_name: "deepseek-chat"
+#     tasks: ["simple"]              # cheap model for routine steps
+#     priority: 1
+#     max_requests_per_minute: 30
+#     max_requests_per_day: 2000
+#   - provider: "anthropic"
+#     model_name: "claude-sonnet-5"
+#     tasks: ["complex"]             # strong model for planning/recovery
+#     priority: 1
+#   - provider: "openai"
+#     model_name: "gpt-4o-mini"
+#     tasks: ["simple", "complex"]   # general fallback for everything
+#     priority: 9
