@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodeBloom — טכנולוגיה שצומחת יחד איתכם</title>
+<meta name="description" content="CodeBloom: לימוד תכנות, בינה מלאכותית ופיתוח מערכות בהתאמה אישית, בגישה נגישה ומכבדת לקהל הדתי והחרדי." />
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg-elevated: #142544;
+    --bg-elevated-2: #1a2e54;
+    --primary: #1e3a8a;
+    --primary-soft: #2c4ba3;
+    --accent: #b45309;
+    --accent-soft: #e08a2c;
+    --text: #f2ede1;
+    --text-muted: #a8b3c7;
+    --border: rgba(148, 163, 184, 0.16);
+    --border-strong: rgba(180, 83, 9, 0.35);
+    --shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.6);
+    --font: "Segoe UI", "Assistant", "Heebo", system-ui, -apple-system, Arial, sans-serif;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image:
+      radial-gradient(1100px 520px at 85% -10%, rgba(30, 58, 138, 0.45), transparent 60%),
+      radial-gradient(900px 480px at -10% 15%, rgba(180, 83, 9, 0.14), transparent 55%);
+    overflow-x: hidden;
+  }
+
+  img, svg { max-width: 100%; display: block; }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  a { color: inherit; }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-soft);
+    letter-spacing: 0.02em;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 22px;
+    height: 2px;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  p { line-height: 1.75; color: var(--text-muted); margin: 0; }
+
+  /* ---------- nav ---------- */
+  header.site {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(10px);
+    background: rgba(15, 23, 42, 0.72);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 28px;
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: 0.01em;
+  }
+  .brand .mark { width: 30px; height: 30px; }
+  .brand .name b { color: var(--accent-soft); }
+  nav.links { display: flex; gap: 26px; font-size: 14.5px; color: var(--text-muted); }
+  nav.links a { text-decoration: none; transition: color 0.15s ease; }
+  nav.links a:hover, nav.links a:focus-visible { color: var(--text); }
+  nav.links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative;
+    padding: 96px 0 84px;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .hero h1 {
+    font-size: clamp(34px, 5vw, 54px);
+    line-height: 1.15;
+    font-weight: 800;
+    margin: 18px 0 22px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent-soft);
+    background: linear-gradient(180deg, transparent 62%, rgba(180, 83, 9, 0.35) 62%);
+  }
+  .hero p.lead { font-size: 17.5px; max-width: 46ch; }
+  .hero-actions { display: flex; gap: 14px; margin-top: 34px; flex-wrap: wrap; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 13px 22px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
+  .btn.primary { background: var(--accent); color: #1a1104; }
+  .btn.primary:hover { background: var(--accent-soft); transform: translateY(-1px); }
+  .btn.ghost { border-color: var(--border-strong); color: var(--text); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent-soft); transform: translateY(-1px); }
+
+  .hero-emblem {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hero-emblem svg { width: min(340px, 80%); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-grid > * { animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .hero-grid > *:nth-child(2) { animation-delay: 0.12s; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .bloom-petal { transform-origin: 100px 100px; animation: unfurl 1.1s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .bloom-petal:nth-child(1) { animation-delay: 0.05s; }
+    .bloom-petal:nth-child(2) { animation-delay: 0.12s; }
+    .bloom-petal:nth-child(3) { animation-delay: 0.19s; }
+    .bloom-petal:nth-child(4) { animation-delay: 0.26s; }
+    .bloom-petal:nth-child(5) { animation-delay: 0.33s; }
+    .bloom-petal:nth-child(6) { animation-delay: 0.4s; }
+    @keyframes unfurl {
+      from { opacity: 0; transform: scale(0.35); }
+      to { opacity: 1; transform: scale(1); }
+    }
+  }
+
+  /* ---------- sections ---------- */
+  section { padding: 76px 0; border-top: 1px solid var(--border); }
+  .section-head { max-width: 60ch; margin-bottom: 44px; }
+  .section-head h2 { font-size: clamp(24px, 3vw, 32px); margin-top: 14px; font-weight: 700; }
+  .section-head p { margin-top: 12px; font-size: 16px; }
+
+  /* founder */
+  .founder {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 26px;
+    align-items: start;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 30px;
+  }
+  .founder-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(150deg, var(--primary), var(--primary-soft));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    flex-shrink: 0;
+  }
+  .founder h3 { font-size: 19px; font-weight: 700; }
+  .founder .role { color: var(--accent-soft); font-size: 14px; font-weight: 600; margin-top: 3px; display: block; }
+  .founder p { margin-top: 12px; font-size: 15.5px; }
+
+  /* services */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 26px;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+  .card:hover { border-color: var(--border-strong); transform: translateY(-3px); }
+  .card .num { font-size: 13px; color: var(--accent-soft); font-weight: 700; letter-spacing: 0.04em; }
+  .card h3 { font-size: 18px; margin-top: 12px; font-weight: 700; }
+  .card p { margin-top: 10px; font-size: 14.5px; }
+  .card a.card-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent-soft);
+    text-decoration: none;
+  }
+  .card a.card-link:hover { text-decoration: underline; }
+
+  /* stack badges */
+  .stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .badge {
+    padding: 9px 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    direction: ltr;
+  }
+
+  /* portfolio */
+  .portfolio-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  .proj {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .proj-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .proj h3 { font-size: 16.5px; font-weight: 700; }
+  .status {
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .status.live { color: #bff0c8; background: rgba(34, 197, 94, 0.14); border: 1px solid rgba(34, 197, 94, 0.3); }
+  .status.soon { color: var(--text-muted); background: rgba(148, 163, 184, 0.08); border: 1px solid var(--border); }
+  .proj p { font-size: 14px; }
+  .proj a.visit {
+    margin-top: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent-soft);
+    text-decoration: none;
+    direction: ltr;
+    text-align: right;
+  }
+  .proj a.visit:hover { text-decoration: underline; }
+
+  /* contact */
+  .contact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 40px;
+    flex-wrap: wrap;
+  }
+  .contact h2 { font-size: 24px; font-weight: 700; }
+  .contact p { margin-top: 8px; }
+  .contact-links { display: flex; gap: 14px; flex-wrap: wrap; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 34px 0 44px;
+  }
+  .foot-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 13.5px;
+    color: var(--text-muted);
+  }
+  .foot-row a { text-decoration: none; color: var(--text-muted); }
+  .foot-row a:hover { color: var(--accent-soft); }
+
+  @media (max-width: 860px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-emblem { order: -1; }
+    .hero-emblem svg { width: 220px; }
+    .cards { grid-template-columns: 1fr; }
+    .portfolio-grid { grid-template-columns: 1fr; }
+    nav.links { display: none; }
+    .founder { grid-template-columns: 1fr; }
+    .contact { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="nav">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-strong)" stroke-width="1.5"/>
+        <path d="M35 34 L23 50 L35 66" fill="none" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M65 34 L77 50 L65 66" fill="none" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="50" r="6" fill="var(--accent-soft)"/>
+      </svg>
+      <span class="name">Code<b>Bloom</b></span>
+    </div>
+    <nav class="links">
+      <a href="#services">שירותים</a>
+      <a href="#stack">מה לומדים</a>
+      <a href="#portfolio">תיק עבודות</a>
+      <a href="#contact">יצירת קשר</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="border-top:none;">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">CodeBloom · תכנות · אוטומציה · בינה מלאכותית</span>
+        <h1>טכנולוגיה ש<em>צומחת</em> יחד איתכם</h1>
+        <p class="lead">
+          לימוד תכנות, פתרונות בינה מלאכותית ופיתוח מערכות בהתאמה אישית —
+          בגישה נגישה, מקצועית ומכבדת לקהל הדתי והחרדי.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="https://course.codebloom.co.il" target="_blank" rel="noopener">לקורס התכנות</a>
+          <a class="btn ghost" href="#contact">לשיחה איתנו</a>
+        </div>
+      </div>
+      <div class="hero-emblem">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <g fill="none" stroke-linecap="round">
+            <path class="bloom-petal" d="M100 100 L100 40" stroke="var(--primary-soft)" stroke-width="10"/>
+            <path class="bloom-petal" d="M100 100 L152 65" stroke="var(--accent)" stroke-width="10"/>
+            <path class="bloom-petal" d="M100 100 L152 135" stroke="var(--primary-soft)" stroke-width="10"/>
+            <path class="bloom-petal" d="M100 100 L100 160" stroke="var(--accent)" stroke-width="10"/>
+            <path class="bloom-petal" d="M100 100 L48 135" stroke="var(--primary-soft)" stroke-width="10"/>
+            <path class="bloom-petal" d="M100 100 L48 65" stroke="var(--accent)" stroke-width="10"/>
+          </g>
+          <circle cx="100" cy="40" r="9" fill="var(--primary-soft)"/>
+          <circle cx="152" cy="65" r="9" fill="var(--accent-soft)"/>
+          <circle cx="152" cy="135" r="9" fill="var(--primary-soft)"/>
+          <circle cx="100" cy="160" r="9" fill="var(--accent-soft)"/>
+          <circle cx="48" cy="135" r="9" fill="var(--primary-soft)"/>
+          <circle cx="48" cy="65" r="9" fill="var(--accent-soft)"/>
+          <circle cx="100" cy="100" r="16" fill="var(--bg)" stroke="var(--accent)" stroke-width="3"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="about">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">מי מאחורי זה</span>
+        <h2>נבנה על ידי מי שגם מלמדת וגם בונה</h2>
+      </div>
+      <div class="founder">
+        <div class="founder-avatar">ח״ש</div>
+        <div>
+          <h3>חני שטיינמץ<span class="role">מייסדת CodeBloom · מרצה לתכנות ומפתחת פתרונות טכנולוגיים</span></h3>
+          <p>
+            מלמדת תכנות מהיסוד ועד פרויקטים אמיתיים בשוק, ובמקביל בונה עבור לקוחות
+            עסקיים מערכות AI, אוטומציות ואתרים - עם דגש על פתרונות שמתאימים
+            לצרכים ולערכים של הקהל הדתי והחרדי.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="services">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">שירותים</span>
+        <h2>שלושה מסלולים לעבוד יחד</h2>
+        <p>מלימוד עצמאי ועד מערכת בנויה בדיוק בשבילכם.</p>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <span class="num">01</span>
+          <h3>קורס תכנות</h3>
+          <p>לומדים לעבוד עם ה-API של OpenAI מהבסיס ועד יישום אמיתי - קורס מעשי שמסתיים בפרויקט עובד.</p>
+          <a class="card-link" href="https://course.codebloom.co.il" target="_blank" rel="noopener">לדף הקורס ←</a>
+        </div>
+        <div class="card">
+          <span class="num">02</span>
+          <h3>קו לימודי טלפוני חכם</h3>
+          <p>קו טלפון מבוסס בינה מלאכותית, כשר וללא צורך באינטרנט - עונה על שאלות בתכנות ובמדעי המחשב בכל שעה.</p>
+        </div>
+        <div class="card">
+          <span class="num">03</span>
+          <h3>פיתוח מערכות בהתאמה אישית</h3>
+          <p>CRM, אוטומציות, אתרים ואינטגרציות AI - פתרונות שנבנים סביב הצרכים האמיתיים של העסק שלכם.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="stack">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">מה לומדים אצלנו</span>
+        <h2>שפות וטכנולוגיות</h2>
+      </div>
+      <div class="stack">
+        <span class="badge">Python</span>
+        <span class="badge">Java</span>
+        <span class="badge">C# / C++</span>
+        <span class="badge">JavaScript</span>
+        <span class="badge">SQL</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="portfolio">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">תיק עבודות</span>
+        <h2>פרויקטים שכבר בשטח</h2>
+        <p>דוגמאות אמיתיות למה שיוצא כשמשלבים תכנות טוב עם צורך אמיתי.</p>
+      </div>
+      <div class="portfolio-grid">
+        <div class="proj">
+          <div class="proj-top"><h3>אתר מכירת קורסים</h3><span class="status live">חי</span></div>
+          <p>Next.js עם סליקה מאובטחת דרך Invoice4U.</p>
+          <a class="visit" href="https://course.codebloom.co.il" target="_blank" rel="noopener">course.codebloom.co.il ←</a>
+        </div>
+        <div class="proj">
+          <div class="proj-top"><h3>CRM ליועץ חינוכי</h3><span class="status live">חי</span></div>
+          <p>ניהול תלמידים, פגישות ופניות, כולל פורטל ייעודי למורים.</p>
+          <a class="visit" href="https://edu.codebloom.co.il/teachers" target="_blank" rel="noopener">edu.codebloom.co.il ←</a>
+        </div>
+        <div class="proj">
+          <div class="proj-top"><h3>פתיחת רכב בטלפון כשר</h3><span class="status live">חי</span></div>
+          <p>שליטה ברכב Tesla דרך מענה טלפוני (IVR) בשילוב Tesla Fleet API.</p>
+          <a class="visit" href="https://car-api-1-0eyf.onrender.com/register" target="_blank" rel="noopener">car-api-1-0eyf.onrender.com ←</a>
+        </div>
+        <div class="proj">
+          <div class="proj-top"><h3>סינון תוכן לאינטרנט כשר</h3><span class="status live">חי</span></div>
+          <p>ניתוח וידאו אוטומטי בעזרת GPT-4o Vision.</p>
+          <a class="visit" href="https://netfree-32wy.onrender.com" target="_blank" rel="noopener">netfree-32wy.onrender.com ←</a>
+        </div>
+        <div class="proj">
+          <div class="proj-top"><h3>מחולל קורות חיים לשידוכים</h3><span class="status soon">בקרוב</span></div>
+          <p>יצירת רזומה מותאמת אישית בפורמט PDF, מותאם לצרכי המגזר החרדי.</p>
+        </div>
+        <div class="proj">
+          <div class="proj-top"><h3>אוטומציית פודקאסטים</h3><span class="status soon">בקרוב</span></div>
+          <p>סנכרון אוטומטי בין פיד RSS, Google Drive ומייל.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact">
+    <div class="wrap">
+      <div class="contact">
+        <div>
+          <h2>נדבר?</h2>
+          <p>זמינה לשיחה על קורסים, פרויקטים בהתאמה אישית, או שיתופי פעולה.</p>
+        </div>
+        <div class="contact-links">
+          <a class="btn primary" href="tel:0504113308" style="direction: ltr;">050-411-3308</a>
+          <a class="btn ghost" href="mailto:code2bloom@gmail.com" style="direction: ltr;">code2bloom@gmail.com</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>© <span id="year"></span> CodeBloom · חני שטיינמץ</span>
+    <span>
+      <a href="https://course.codebloom.co.il" target="_blank" rel="noopener">course</a> ·
+      <a href="https://edu.codebloom.co.il" target="_blank" rel="noopener">edu</a> ·
+      <a href="mailto:code2bloom@gmail.com">code2bloom@gmail.com</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+
+</body>
+</html>

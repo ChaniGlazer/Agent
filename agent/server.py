@@ -27,9 +27,11 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 
 from agent.config import AgentConfig, ApprovalMode
 from agent.connection import ExtensionConnection, RemoteBrowser
@@ -43,6 +45,10 @@ logger = logging.getLogger(__name__)
 #: How to build the LLM provider for a task; overridable in tests so no real API is called.
 LLMFactory = Callable[[AgentConfig], LLMProvider]
 
+#: The public landing page served at "/" - deliberately generic company
+#: branding with no mention of what this backend actually does.
+_LANDING_PAGE_PATH = Path(__file__).parent / "static" / "index.html"
+
 
 def create_app(config: AgentConfig, llm_factory: LLMFactory = create_llm_provider) -> FastAPI:
     """Build the FastAPI application bound to ``config``.
@@ -53,14 +59,15 @@ def create_app(config: AgentConfig, llm_factory: LLMFactory = create_llm_provide
     """
     app = FastAPI(title="Web Agent", description="Playwright-free browser agent server")
     app.state.config = config
+    landing_page_html = _LANDING_PAGE_PATH.read_text(encoding="utf-8")
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/")
-    async def root() -> dict[str, str]:
-        return {"status": "ok", "service": "web-agent", "target_url": config.target_url}
+    @app.get("/", response_class=HTMLResponse)
+    async def root() -> str:
+        return landing_page_html
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
