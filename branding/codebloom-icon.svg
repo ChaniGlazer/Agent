@@ -1,0 +1,33 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#0c1f36"/>
+    </linearGradient>
+    <linearGradient id="petal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e08a3e"/>
+      <stop offset="100%" stop-color="#b6491b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background squircle -->
+  <rect x="4" y="4" width="192" height="192" rx="46" fill="url(#bg)"/>
+
+  <!-- bloom mark: 4 petals rotated around center, formed like code brackets blooming -->
+  <g transform="translate(100,100)">
+    <g transform="rotate(0)">
+      <path d="M0,-8 C 22,-30 34,-56 0,-72 C -34,-56 -22,-30 0,-8 Z" fill="url(#petal)"/>
+    </g>
+    <g transform="rotate(90)">
+      <path d="M0,-8 C 22,-30 34,-56 0,-72 C -34,-56 -22,-30 0,-8 Z" fill="url(#petal)"/>
+    </g>
+    <g transform="rotate(180)">
+      <path d="M0,-8 C 22,-30 34,-56 0,-72 C -34,-56 -22,-30 0,-8 Z" fill="url(#petal)"/>
+    </g>
+    <g transform="rotate(270)">
+      <path d="M0,-8 C 22,-30 34,-56 0,-72 C -34,-56 -22,-30 0,-8 Z" fill="url(#petal)"/>
+    </g>
+    <!-- center spark -->
+    <circle cx="0" cy="0" r="15" fill="#fbead9"/>
+  </g>
+</svg>
