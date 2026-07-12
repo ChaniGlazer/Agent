@@ -56,6 +56,8 @@ class PageState:
             if el.get("type"):
                 descriptor += f" type={el['type']}"
             descriptor += f'> selector="{el.get("selector", "")}" text="{el.get("text", "")}"'
+            if el.get("x") is not None and el.get("y") is not None:
+                descriptor += f' x={el["x"]} y={el["y"]}'
             if el.get("disabled"):
                 descriptor += " [disabled]"
             lines.append(descriptor)

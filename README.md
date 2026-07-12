@@ -46,7 +46,7 @@ ToolExecutor
 | `agent/config.py` | טעינת `config.yaml` + משתני סביבה ל-`AgentConfig` |
 | `agent/connection.py` | `ExtensionConnection`/`RemoteBrowser` - התאמת בקשה↔תשובה מול התוסף |
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
-| `agent/tools.py` | מימוש 14 ה-Tools, dry-run, approval, retry/recovery |
+| `agent/tools.py` | מימוש 16 ה-Tools, dry-run, approval, retry/recovery |
 | `agent/llm.py` | הפשטה לספקי LLM (OpenAI/Anthropic + כל ספק תואם-OpenAI - ראו טבלה למטה) |
 | `agent/router.py` | Model Router: ניתוב לפי סוג צעד, תקציבי שימוש, ו-fallback על Rate Limit |
 | `agent/prompts.py` | תבניות הפרומפט למודל |
@@ -55,7 +55,7 @@ ToolExecutor
 | `agent/logger.py` | הגדרת logging + רישום פעולות מובנה |
 | `agent/utils.py` | `ActionResult`, `Timer`, `extract_json` |
 | `extension/background.js` | חיבור ה-WebSocket, ניתוב פעולות (navigate/refresh/screenshot/upload/download), אישורים |
-| `extension/content.js` | ביצוע בפועל ב-DOM (click/fill/read/wait/scroll/press) וקריאת מצב הדף |
+| `extension/content.js` | ביצוע בפועל ב-DOM (click/fill/read/wait/scroll/press/tap/type) וקריאת מצב הדף |
 | `extension/popup.html/js` | ממשק: הגדרת המשימה, מצבי בטיחות, לוג חי |
 | `extension/options.html/js` | הגדרת כתובת השרת וה-token |
 
@@ -280,7 +280,7 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
 ## מצבי בטיחות
 
 * **Dry Run** - פעולות משנות-מצב (click, fill, press, navigate, upload,
-  download, refresh, scroll, open_tab, close_tab) רק נרשמות ומדווחות, לא
+  download, refresh, scroll, open_tab, close_tab, tap, type) רק נרשמות ומדווחות, לא
   מבוצעות בפועל. פעולות קריאה (`read`, `wait`, `screenshot`, `check_links`)
   עדיין רצות כדי לתת למודל הקשר אמיתי.
 * **Approval Mode**:
@@ -311,8 +311,10 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
 | `fill(selector, text)` | מילוי שדה טקסט | `content.js` |
 | `read(selector)` | קריאת תוכן/ערך של אלמנט | `content.js` |
 | `wait(selector)` | המתנה לאלמנט (עד שנראה) | `content.js` |
-| `scroll()` | גלילה לאלמנט או גלילת עמוד | `content.js` |
+| `scroll(selector?, text?)` | גלילה לאלמנט (עם `selector`), או גלילת עמוד לפי כיוון (`up`/`down`/`left`/`right`), כמות פיקסלים מספרית, או ברירת מחדל ללא `text` | `content.js` |
 | `press(key)` | לחיצת מקלדת | `content.js` |
+| `tap(text)` | הקשה על נקודה בעמוד לפי קואורדינטות `"x,y"` (מ-PAGE STATE) - fallback לכשאין סלקטור אמין | `content.js` |
+| `type(text)` | הקלדת טקסט תו-אחר-תו לתוך האלמנט הממוקד כרגע (אחרי `click`/`tap`) | `content.js` |
 | `navigate(url)` | ניווט לכתובת | `background.js` (`chrome.tabs.update`) |
 | `refresh()` | רענון הדף | `background.js` (`chrome.tabs.reload`) |
 | `screenshot()` | צילום החלון הנראה (viewport) - **לא** עמוד מלא | `background.js` (`chrome.tabs.captureVisibleTab`) |
@@ -395,7 +397,7 @@ Agent/
 │   ├── config.py            # AgentConfig + טעינת YAML/משתני סביבה
 │   ├── connection.py        # ExtensionConnection / RemoteBrowser
 │   ├── controller.py        # לולאת ה-Agent הראשית
-│   ├── tools.py             # ToolExecutor - 11 ה-Tools
+│   ├── tools.py             # ToolExecutor - 16 ה-Tools
 │   ├── llm.py                # ספקי LLM (OpenAI/Anthropic + Provider תואם-OpenAI)
 │   ├── router.py             # Model Router - שילוב מודלים
 │   ├── prompts.py            # תבניות פרומפט

@@ -218,6 +218,42 @@ async def test_open_tab_failure_without_a_resolvable_link_is_reported(tmp_path: 
     assert result.error == "no_href"
 
 
+async def test_tap_and_type_are_skipped_in_dry_run(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    config = _make_config(tmp_path, dry_run=True)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    tap_result = await tools.execute("tap", text="120,340")
+    type_result = await tools.execute("type", text="hello")
+
+    assert tap_result.success is True and "[DRY RUN]" in tap_result.message
+    assert type_result.success is True and "[DRY RUN]" in type_result.message
+    assert browser.execute_calls == []
+
+
+async def test_scroll_is_skipped_in_dry_run(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    config = _make_config(tmp_path, dry_run=True)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    result = await tools.execute("scroll", text="down")
+
+    assert result.success is True and "[DRY RUN]" in result.message
+    assert browser.execute_calls == []
+
+
+async def test_tap_forwards_text_to_the_browser(tmp_path: Path) -> None:
+    browser = FakeRemoteBrowser()
+    browser.action_results["tap"] = [ActionResult(True, "Tapped the element at (120, 340).")]
+    config = _make_config(tmp_path)
+    tools = ToolExecutor(browser=browser, config=config, memory=Memory(goal="g"))
+
+    result = await tools.execute("tap", text="120,340")
+
+    assert result.success is True
+    assert browser.execute_calls == [("tap", None, "120,340", False)]
+
+
 async def test_read_page_state_delegates_to_browser(tmp_path: Path) -> None:
     browser = FakeRemoteBrowser()
     config = _make_config(tmp_path)

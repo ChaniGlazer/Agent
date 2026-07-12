@@ -1,5 +1,6 @@
 """The agent's tool surface: click, fill, read, wait, screenshot, navigate,
-scroll, press, upload, download, refresh, open_tab, close_tab, check_links.
+scroll, press, tap, type, upload, download, refresh, open_tab, close_tab,
+check_links.
 
 :class:`ToolExecutor` is the single entry point the controller uses to run
 any tool. Actual DOM work happens inside the browser extension; every tool
@@ -37,14 +38,14 @@ logger = logging.getLogger(__name__)
 #: Actions that change page state and must therefore be skipped in dry-run mode.
 MUTATING_ACTIONS = {
     "click", "fill", "press", "upload", "navigate", "refresh", "scroll", "download",
-    "open_tab", "close_tab",
+    "open_tab", "close_tab", "tap", "type",
 }
 
 #: All tool names the executor knows how to dispatch.
 KNOWN_ACTIONS = {
     "click", "fill", "read", "wait", "screenshot", "navigate",
     "scroll", "press", "upload", "download", "refresh",
-    "open_tab", "close_tab", "check_links",
+    "open_tab", "close_tab", "check_links", "tap", "type",
 }
 
 
