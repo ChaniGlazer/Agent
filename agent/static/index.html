@@ -266,7 +266,20 @@
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 22px 24px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .proj-visual {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--bg-elevated-2) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 0;
+  }
+  .proj-visual svg { width: 46px; height: 46px; }
+  .proj-body {
+    padding: 18px 24px 22px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -487,32 +500,100 @@
       </div>
       <div class="portfolio-grid">
         <div class="proj">
-          <div class="proj-top"><h3>אתר מכירת קורסים</h3><span class="status live">חי</span></div>
-          <p>Next.js עם סליקה מאובטחת דרך Invoice4U.</p>
-          <a class="visit" href="https://course.codebloom.co.il" target="_blank" rel="noopener">course.codebloom.co.il ←</a>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="18" y="22" width="64" height="42" rx="6" fill="none" stroke="var(--accent-soft)" stroke-width="6"/>
+              <line x1="50" y1="64" x2="50" y2="76" stroke="var(--accent-soft)" stroke-width="6" stroke-linecap="round"/>
+              <line x1="36" y1="76" x2="64" y2="76" stroke="var(--accent-soft)" stroke-width="6" stroke-linecap="round"/>
+              <path d="M32 38 h10 l4 14 h18 l5 -10" fill="none" stroke="var(--accent-soft)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="48" cy="56" r="2.6" fill="var(--accent-soft)"/>
+              <circle cx="60" cy="56" r="2.6" fill="var(--accent-soft)"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>אתר מכירת קורסים</h3><span class="status live">חי</span></div>
+            <p>Next.js עם סליקה מאובטחת דרך Invoice4U.</p>
+            <a class="visit" href="https://course.codebloom.co.il" target="_blank" rel="noopener">course.codebloom.co.il ←</a>
+          </div>
         </div>
         <div class="proj">
-          <div class="proj-top"><h3>CRM ליועץ חינוכי</h3><span class="status live">חי</span></div>
-          <p>ניהול תלמידים, פגישות ופניות, כולל פורטל ייעודי למורים.</p>
-          <a class="visit" href="https://edu.codebloom.co.il/teachers" target="_blank" rel="noopener">edu.codebloom.co.il ←</a>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="30" cy="34" r="9" fill="none" stroke="var(--accent-soft)" stroke-width="5"/>
+              <circle cx="70" cy="34" r="9" fill="none" stroke="var(--accent-soft)" stroke-width="5"/>
+              <circle cx="50" cy="66" r="9" fill="none" stroke="var(--accent-soft)" stroke-width="5"/>
+              <line x1="37" y1="40" x2="45" y2="59" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+              <line x1="63" y1="40" x2="55" y2="59" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+              <line x1="39" y1="34" x2="61" y2="34" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>CRM ליועץ חינוכי</h3><span class="status live">חי</span></div>
+            <p>ניהול תלמידים, פגישות ופניות, כולל פורטל ייעודי למורים.</p>
+            <a class="visit" href="https://edu.codebloom.co.il/teachers" target="_blank" rel="noopener">edu.codebloom.co.il ←</a>
+          </div>
         </div>
         <div class="proj">
-          <div class="proj-top"><h3>פתיחת רכב בטלפון כשר</h3><span class="status live">חי</span></div>
-          <p>שליטה ברכב Tesla דרך מענה טלפוני (IVR) בשילוב Tesla Fleet API.</p>
-          <a class="visit" href="https://car-api-1-0eyf.onrender.com/register" target="_blank" rel="noopener">car-api-1-0eyf.onrender.com ←</a>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M22 60 l6 -16 a6 6 0 0 1 6 -4 h32 a6 6 0 0 1 6 4 l6 16" fill="none" stroke="var(--accent-soft)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="18" y1="60" x2="82" y2="60" stroke="var(--accent-soft)" stroke-width="6" stroke-linecap="round"/>
+              <circle cx="32" cy="60" r="5" fill="var(--accent-soft)"/>
+              <circle cx="68" cy="60" r="5" fill="var(--accent-soft)"/>
+              <path d="M64 24 a10 10 0 0 1 0 14" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+              <path d="M70 18 a18 18 0 0 1 0 26" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>פתיחת רכב בטלפון כשר</h3><span class="status live">חי</span></div>
+            <p>שליטה ברכב Tesla דרך מענה טלפוני (IVR) בשילוב Tesla Fleet API.</p>
+            <a class="visit" href="https://car-api-1-0eyf.onrender.com/register" target="_blank" rel="noopener">car-api-1-0eyf.onrender.com ←</a>
+          </div>
         </div>
         <div class="proj">
-          <div class="proj-top"><h3>סינון תוכן לאינטרנט כשר</h3><span class="status live">חי</span></div>
-          <p>ניתוח וידאו אוטומטי בעזרת GPT-4o Vision.</p>
-          <a class="visit" href="https://netfree-32wy.onrender.com" target="_blank" rel="noopener">netfree-32wy.onrender.com ←</a>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M50 18 l24 8 v20 c0 18 -12 30 -24 34 c-12 -4 -24 -16 -24 -34 v-20 z" fill="none" stroke="var(--accent-soft)" stroke-width="6" stroke-linejoin="round"/>
+              <path d="M43 40 l16 10 l-16 10 z" fill="var(--accent-soft)"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>סינון תוכן לאינטרנט כשר</h3><span class="status live">חי</span></div>
+            <p>ניתוח וידאו אוטומטי בעזרת GPT-4o Vision.</p>
+            <a class="visit" href="https://netfree-32wy.onrender.com" target="_blank" rel="noopener">netfree-32wy.onrender.com ←</a>
+          </div>
         </div>
         <div class="proj">
-          <div class="proj-top"><h3>מחולל קורות חיים לשידוכים</h3><span class="status soon">בקרוב</span></div>
-          <p>יצירת רזומה מותאמת אישית בפורמט PDF, מותאם לצרכי המגזר החרדי.</p>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="26" y="18" width="48" height="64" rx="6" fill="none" stroke="var(--accent-soft)" stroke-width="6"/>
+              <circle cx="50" cy="34" r="7" fill="none" stroke="var(--accent-soft)" stroke-width="5"/>
+              <line x1="36" y1="52" x2="64" y2="52" stroke="var(--accent-soft)" stroke-width="4.5" stroke-linecap="round"/>
+              <line x1="36" y1="62" x2="64" y2="62" stroke="var(--accent-soft)" stroke-width="4.5" stroke-linecap="round"/>
+              <line x1="36" y1="72" x2="54" y2="72" stroke="var(--accent-soft)" stroke-width="4.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>מחולל קורות חיים לשידוכים</h3><span class="status soon">בקרוב</span></div>
+            <p>יצירת רזומה מותאמת אישית בפורמט PDF, מותאם לצרכי המגזר החרדי.</p>
+          </div>
         </div>
         <div class="proj">
-          <div class="proj-top"><h3>אוטומציית פודקאסטים</h3><span class="status soon">בקרוב</span></div>
-          <p>סנכרון אוטומטי בין פיד RSS, Google Drive ומייל.</p>
+          <div class="proj-visual">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="42" y="18" width="16" height="30" rx="8" fill="none" stroke="var(--accent-soft)" stroke-width="5.5"/>
+              <path d="M32 42 a18 18 0 0 0 36 0" fill="none" stroke="var(--accent-soft)" stroke-width="5.5" stroke-linecap="round"/>
+              <line x1="50" y1="60" x2="50" y2="70" stroke="var(--accent-soft)" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M22 30 a30 30 0 0 1 8 -14" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+              <path d="M78 60 a30 30 0 0 1 -8 14" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round"/>
+              <path d="M18 22 l4 8 l8 -3" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M82 68 l-4 -8 l-8 3" fill="none" stroke="var(--accent-soft)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="proj-body">
+            <div class="proj-top"><h3>אוטומציית פודקאסטים</h3><span class="status soon">בקרוב</span></div>
+            <p>סנכרון אוטומטי בין פיד RSS, Google Drive ומייל.</p>
+          </div>
         </div>
       </div>
     </div>
