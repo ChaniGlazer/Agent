@@ -67,14 +67,28 @@ async function connectWebSocket() {
   connectionStatus = "connecting";
   broadcastStatus();
 
-  const wsUrl = `${serverUrl.replace(/\/+$/, "")}/ws`;
+  const base = serverUrl.replace(/\/+$/, "");
   try {
-    socket = new WebSocket(wsUrl, [`${AUTH_SUBPROTOCOL_PREFIX}${token}`]);
-  } catch (err) {
-    connectionStatus = "error";
-    broadcastStatus();
-    scheduleReconnect();
-    return;
+    // Preferred: the token travels as a WebSocket subprotocol, never in the
+    // URL. This only works when the token is a valid HTTP token (letters,
+    // digits, "-", "_", "." - no spaces, "/", "+", "=", etc.); a manually
+    // typed token or one that isn't URL-safe base64 isn't, and the
+    // WebSocket constructor throws synchronously (SyntaxError) in that case.
+    socket = new WebSocket(`${base}/ws`, [`${AUTH_SUBPROTOCOL_PREFIX}${token}`]);
+  } catch {
+    try {
+      // Fallback for tokens that aren't valid subprotocol strings - the
+      // server still accepts `?token=` for exactly this reason. Regenerate
+      // the token with `secrets.token_urlsafe(32)` (see the README) to get
+      // the subprotocol path working again, e.g. for content filters that
+      // block URLs carrying an auth token.
+      socket = new WebSocket(`${base}/ws?token=${encodeURIComponent(token)}`);
+    } catch (err) {
+      connectionStatus = "error";
+      broadcastStatus();
+      scheduleReconnect();
+      return;
+    }
   }
 
   socket.addEventListener("open", () => {
