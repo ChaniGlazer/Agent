@@ -16,6 +16,10 @@ const MAX_LOG_ENTRIES = 200;
 const APPROVAL_TIMEOUT_MS = 120000;
 const DOWNLOAD_WAIT_MS = 8000;
 const OPEN_TAB_CLICK_TIMEOUT_MS = 6000;
+// Sent as a WebSocket subprotocol instead of a `?token=` query parameter,
+// so the auth token never appears in the connection URL - some content
+// filters inspect and block URLs that carry a token in plain sight.
+const AUTH_SUBPROTOCOL_PREFIX = "agent-token.";
 
 let socket = null;
 let connectionStatus = "disconnected"; // disconnected | connecting | connected | unconfigured
@@ -63,9 +67,9 @@ async function connectWebSocket() {
   connectionStatus = "connecting";
   broadcastStatus();
 
-  const wsUrl = `${serverUrl.replace(/\/+$/, "")}/ws?token=${encodeURIComponent(token)}`;
+  const wsUrl = `${serverUrl.replace(/\/+$/, "")}/ws`;
   try {
-    socket = new WebSocket(wsUrl);
+    socket = new WebSocket(wsUrl, [`${AUTH_SUBPROTOCOL_PREFIX}${token}`]);
   } catch (err) {
     connectionStatus = "error";
     broadcastStatus();

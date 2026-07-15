@@ -83,8 +83,29 @@ def test_websocket_rejects_invalid_token(tmp_path: Path) -> None:
     client = TestClient(app)
 
     with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws", subprotocols=["agent-token.wrong-token"]):
+            pass
+
+
+def test_websocket_rejects_invalid_legacy_query_token(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/ws?token=wrong-token"):
             pass
+
+
+def test_websocket_accepts_legacy_query_token(tmp_path: Path) -> None:
+    """A not-yet-reloaded extension still sending `?token=` must keep working."""
+    config = _make_config(tmp_path)
+    app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
+    client = TestClient(app)
+
+    with client.websocket_connect(f"/ws?token={config.auth_token}") as ws:
+        hello = ws.receive_json()
+        assert hello["type"] == "hello_ack"
 
 
 def test_stop_task_with_no_active_task_reports_an_error(tmp_path: Path) -> None:
@@ -92,7 +113,7 @@ def test_stop_task_with_no_active_task_reports_an_error(tmp_path: Path) -> None:
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
     client = TestClient(app)
 
-    with client.websocket_connect(f"/ws?token={config.auth_token}") as ws:
+    with client.websocket_connect("/ws", subprotocols=[f"agent-token.{config.auth_token}"]) as ws:
         hello = ws.receive_json()
         assert hello["type"] == "hello_ack"
 
@@ -110,7 +131,7 @@ def test_full_task_flow_over_websocket(tmp_path: Path) -> None:
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM(decisions))
     client = TestClient(app)
 
-    with client.websocket_connect(f"/ws?token={config.auth_token}") as ws:
+    with client.websocket_connect("/ws", subprotocols=[f"agent-token.{config.auth_token}"]) as ws:
         hello = ws.receive_json()
         assert hello == {"type": "hello_ack", "target_url": config.target_url}
 

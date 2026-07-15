@@ -6,7 +6,16 @@ it holds the "brain" (LLM + control loop) and delegates every DOM action to
 whichever extension is currently connected, via the request/response protocol
 implemented in :mod:`agent.connection`.
 
-Wire protocol (JSON text frames over `/ws?token=<auth_token>`):
+Wire protocol (JSON text frames over `/ws`):
+
+Authentication travels in the WebSocket handshake's `Sec-WebSocket-Protocol`
+header (as `agent-token.<auth_token>`, set via the `protocols` argument of
+the browser `WebSocket` constructor) rather than a `?token=...` query
+parameter - some corporate/content filters inspect and block URLs that
+carry an auth token in plain sight, and a URL is also far more likely to
+end up logged somewhere (browser history, proxy logs) than a handshake
+header. `/ws?token=<auth_token>` is still accepted as a fallback so an
+extension that has not yet reloaded its updated code keeps working.
 
 Extension -> server:
     {"type": "hello"}
@@ -45,6 +54,10 @@ logger = logging.getLogger(__name__)
 #: How to build the LLM provider for a task; overridable in tests so no real API is called.
 LLMFactory = Callable[[AgentConfig], LLMProvider]
 
+#: Prefix identifying the auth-token subprotocol among whatever the browser
+#: WebSocket client offers in `Sec-WebSocket-Protocol`.
+_AUTH_SUBPROTOCOL_PREFIX = "agent-token."
+
 #: The public landing page served at "/" - deliberately generic company
 #: branding with no mention of what this backend actually does.
 _LANDING_PAGE_PATH = Path(__file__).parent / "static" / "index.html"
@@ -76,15 +89,29 @@ def create_app(config: AgentConfig, llm_factory: LLMFactory = create_llm_provide
     return app
 
 
+def _extract_auth(websocket: WebSocket) -> tuple[str | None, str | None]:
+    """Pull the auth token off the handshake, and the subprotocol to echo back.
+
+    Returns ``(token, subprotocol)`` - ``subprotocol`` is ``None`` when the
+    token came from the legacy ``?token=`` query-parameter fallback, since
+    there is then no offered subprotocol to accept with.
+    """
+    offered = websocket.headers.get("sec-websocket-protocol", "")
+    for protocol in (p.strip() for p in offered.split(",")):
+        if protocol.startswith(_AUTH_SUBPROTOCOL_PREFIX):
+            return protocol[len(_AUTH_SUBPROTOCOL_PREFIX) :], protocol
+    return websocket.query_params.get("token"), None
+
+
 async def _handle_session(websocket: WebSocket, config: AgentConfig, llm_factory: LLMFactory) -> None:
     """Own one extension's WebSocket connection for its full lifetime."""
-    token = websocket.query_params.get("token")
+    token, subprotocol = _extract_auth(websocket)
     if not config.auth_token or token != config.auth_token:
         logger.warning("Rejected WebSocket connection with invalid token.")
         await websocket.close(code=4401, reason="invalid or missing token")
         return
 
-    await websocket.accept()
+    await websocket.accept(subprotocol=subprotocol)
     logger.info("Extension connected.")
 
     connection = ExtensionConnection(websocket, request_timeout=config.request_timeout_seconds)
