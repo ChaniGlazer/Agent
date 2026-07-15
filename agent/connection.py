@@ -1,11 +1,13 @@
 """Request/response protocol between the server and the browser extension.
 
 The server never talks to a browser directly - it sends JSON "request"
-messages over a WebSocket to the extension, which executes the actual DOM
-work (reading page state, clicking, filling, ...) and replies with a
-correlated "response" message. :class:`ExtensionConnection` implements that
-correlation; :class:`RemoteBrowser` exposes it as the small, typed API the
-rest of the agent (``ToolExecutor``, ``AgentController``) depends on.
+messages to the extension (queued for delivery over its long-poll
+connection - see :mod:`agent.server`), which executes the actual DOM work
+(reading page state, clicking, filling, ...) and replies with a correlated
+"response" message. :class:`ExtensionConnection` implements that
+correlation and is transport-agnostic; :class:`RemoteBrowser` exposes it as
+the small, typed API the rest of the agent (``ToolExecutor``,
+``AgentController``) depends on.
 """
 
 from __future__ import annotations
@@ -35,7 +37,9 @@ class ConnectionClosedError(RuntimeError):
 class SendJSON(Protocol):
     """The minimal transport capability :class:`ExtensionConnection` needs.
 
-    Satisfied by ``starlette.websockets.WebSocket`` and by simple fakes in tests.
+    Satisfied by the queue-backed adapter in :mod:`agent.server` (or
+    anything else with an equivalent ``send_json``) and by simple fakes in
+    tests.
     """
 
     async def send_json(self, data: dict[str, Any]) -> None: ...
@@ -44,10 +48,11 @@ class SendJSON(Protocol):
 class ExtensionConnection:
     """Correlates outbound requests to a single extension with their replies.
 
-    One instance is created per WebSocket connection. Incoming "response"
-    messages are fed in by the server's receive loop via
-    :meth:`resolve_response`; this class does not read from the socket itself,
-    which keeps it trivially testable without a real WebSocket.
+    One instance is created per extension session. Incoming "response"
+    messages are fed in by the server via :meth:`resolve_response`; this
+    class does not read from the transport itself, which keeps it trivially
+    testable and lets it work the same way regardless of what delivers the
+    messages underneath.
     """
 
     def __init__(self, transport: SendJSON, request_timeout: float = DEFAULT_REQUEST_TIMEOUT_SECONDS) -> None:

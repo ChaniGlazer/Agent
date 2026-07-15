@@ -22,7 +22,7 @@ from agent.server import create_app
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Run the web agent's WebSocket server.")
+    parser = argparse.ArgumentParser(description="Run the web agent's server.")
     parser.add_argument("--config", default="config.yaml", help="Path to the YAML configuration file.")
     return parser.parse_args(argv)
 

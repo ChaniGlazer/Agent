@@ -1,5 +1,5 @@
 """Unit tests for agent.controller.AgentController's read-decide-act loop,
-driven by a scripted fake LLM and a fake RemoteBrowser (no real WebSocket
+driven by a scripted fake LLM and a fake RemoteBrowser (no real connection
 or LLM API calls).
 """
 

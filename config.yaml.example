@@ -6,9 +6,10 @@
 # given to the LLM as context.
 target_url: "https://internal.example.local"
 
-# Shared secret the browser extension must present as ?token=... when
-# opening the WebSocket connection. Required - without it every connection
-# is rejected. Generate one with, e.g.: python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Shared secret the browser extension must present (as an "Authorization:
+# Bearer ..." header) to use the server's HTTP API. Required - without it
+# every request is rejected. Generate one with, e.g.:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
 # Prefer setting this via the AGENT_AUTH_TOKEN environment variable instead
 # of committing it here (this is exactly how you'd set it as a Render
 # environment variable).

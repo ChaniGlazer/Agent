@@ -1,7 +1,7 @@
 # Render Blueprint - see https://render.com/docs/blueprint-spec
 #
 # Deploys the agent server as a Render Web Service. The service holds no
-# browser and no Playwright dependency; it only speaks the WebSocket
+# browser and no Playwright dependency; it only speaks an HTTP long-polling
 # protocol to the companion browser extension (see extension/).
 #
 # After the first deploy, set TARGET_URL/AGENT_AUTH_TOKEN/<provider>_API_KEY

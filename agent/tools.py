@@ -182,7 +182,7 @@ class ToolExecutor:
         log_action(logger, action, selector, result.success, duration, result.error)
 
     # ------------------------------------------------------------------ #
-    # Screenshot handling (image bytes travel over the WebSocket as base64)
+    # Screenshot handling (image bytes travel to the server as base64)
     # ------------------------------------------------------------------ #
 
     async def _screenshot_result(self, selector: str | None) -> ActionResult:

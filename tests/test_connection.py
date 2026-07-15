@@ -18,7 +18,7 @@ from agent.connection import (
 
 
 class FakeTransport:
-    """Records every JSON message that would have been sent over the WebSocket."""
+    """Records every JSON message that would have been sent to the extension."""
 
     def __init__(self, should_fail: bool = False) -> None:
         self.sent: list[dict[str, Any]] = []

@@ -3,7 +3,9 @@
 סוכן בינה מלאכותית שפועל אך ורק על אתר אינטרנט פנימי אחד. ה"מוח" של הסוכן
 (הלולאה הראשית + קריאות ל-LLM) רץ כשרת Python בענן (למשל ב-Render), ואילו
 ביצוע הפעולות בפועל בדפדפן - קריאת הדף, לחיצות, מילוי טפסים - מתבצע על ידי
-תוסף Chrome שמותקן על המחשב שלכם ומדבר עם השרת דרך WebSocket.
+תוסף Chrome שמותקן על המחשב שלכם ומדבר עם השרת דרך HTTP רגיל (long-polling),
+לא WebSocket - זה נבחר בכוונה כדי שהתקשורת תיראה כמו כל קריאת REST רגילה
+ולא תיחסם ע"י פילטרים/פרוקסי שחוסמים או לא תומכים ב-handshake של WebSocket.
 
 השרת **לא** נוגע בדפדפן בעצמו ואין בו תלות ב-Playwright; כל הפעולות
 מבוצעות על ידי התוסף מול הטאב שפתוח אצלכם.
@@ -11,13 +13,14 @@
 ## ארכיטקטורה
 
 ```
-                    WebSocket (wss://.../ws, אימות ב-Sec-WebSocket-Protocol)
+              HTTP long-polling (https://.../agent/..., אימות ב-Authorization header)
 ┌─────────────────────┐  ◄──────────────────────────────►  ┌─────────────────────┐
-│   שרת (Render)        │                                    │   תוסף Chrome         │
-│   agent/server.py     │   {"type":"request", action:...}   │   background.js       │
+│   שרת (Render)        │  GET /agent/poll (תלוי עד שיש     │   תוסף Chrome         │
+│   agent/server.py     │  הודעה) -> {"type":"request",...} │   background.js       │
 │   Controller ←→ LLM   │ ─────────────────────────────────► │   ↓ מבצע ב-DOM        │
 │   ToolExecutor        │ ◄───────────────────────────────── │   content.js          │
-│                       │   {"type":"response", payload:...} │                       │
+│                       │  POST /agent/message                │                       │
+│                       │  {"type":"response", payload:...}  │                       │
 └─────────────────────┘                                    └─────────────────────┘
                                                                        │
                                                                        ▼
@@ -42,9 +45,9 @@ ToolExecutor
 | קובץ | תפקיד |
 |---|---|
 | `agent/main.py` | נקודת כניסה: מפעיל את שרת ה-`uvicorn` |
-| `agent/server.py` | אפליקציית FastAPI, ה-endpoint `/ws`, פרוטוקול ההודעות |
+| `agent/server.py` | אפליקציית FastAPI, ה-endpoints `/agent/connect`, `/agent/poll`, `/agent/message`, ניהול sessions |
 | `agent/config.py` | טעינת `config.yaml` + משתני סביבה ל-`AgentConfig` |
-| `agent/connection.py` | `ExtensionConnection`/`RemoteBrowser` - התאמת בקשה↔תשובה מול התוסף |
+| `agent/connection.py` | `ExtensionConnection`/`RemoteBrowser` - התאמת בקשה↔תשובה מול התוסף (לא תלוי בפרוטוקול ההעברה) |
 | `agent/controller.py` | הלולאה הראשית: read state → LLM → act → verify |
 | `agent/tools.py` | מימוש 16 ה-Tools, dry-run, approval, retry/recovery |
 | `agent/llm.py` | הפשטה לספקי LLM (OpenAI/Anthropic + כל ספק תואם-OpenAI - ראו טבלה למטה) |
@@ -54,7 +57,7 @@ ToolExecutor
 | `agent/memory.py` | זיכרון המשימה: יעד, היסטוריה, שגיאות |
 | `agent/logger.py` | הגדרת logging + רישום פעולות מובנה |
 | `agent/utils.py` | `ActionResult`, `Timer`, `extract_json` |
-| `extension/background.js` | חיבור ה-WebSocket, ניתוב פעולות (navigate/refresh/screenshot/upload/download), אישורים |
+| `extension/background.js` | לולאת ה-long-polling מול השרת, ניתוב פעולות (navigate/refresh/screenshot/upload/download), אישורים |
 | `extension/content.js` | ביצוע בפועל ב-DOM (click/fill/read/wait/scroll/press/tap/type) וקריאת מצב הדף |
 | `extension/popup.html/js` | ממשק: הגדרת המשימה, מצבי בטיחות, לוג חי |
 | `extension/options.html/js` | הגדרת כתובת השרת וה-token |
@@ -191,18 +194,28 @@ python -m agent.main --config config.yaml
 * `GET /healthz` - בדיקת חיות.
 * `GET /` - דף נחיתה ציבורי (`agent/static/index.html`) עם מיתוג כללי של החברה;
   לא חושף שום מידע על מה שהשרת בפועל עושה (אין JSON, אין `target_url`).
-* `WS /ws` - ה-endpoint שהתוסף מתחבר אליו. הטוקן עובר ב-handshake עצמו
-  (header `Sec-WebSocket-Protocol`, כ-`agent-token.<טוקן>` - כך שהוא מוגדר
-  דרך הפרמטר `protocols` של ה-`WebSocket` בדפדפן) ולא ב-URL, כדי שהוא לא
-  ייחשף בכתובת עצמה (שנרשמת בלוגים של פרוקסי/פילטר תוכן, בהיסטוריית
-  הדפדפן וכו'). `?token=...` עדיין נתמך כ-fallback לתוסף שעדיין לא עודכן.
+* `POST /agent/connect` - התוסף קורא לזה פעם אחת כדי להתחיל session חדש;
+  מחזיר `session_id` ואת `target_url`.
+* `GET /agent/poll?session_id=...` - long-poll (עד כ-25 שניות) להודעה
+  הבאה שהשרת רוצה למסור לתוסף - זה מה שמדמה את כיוון "שרת → תוסף" בלי
+  WebSocket. אם שום דבר לא הגיע בזמן, חוזר `{"type":"idle"}` והתוסף פשוט
+  קורא שוב מיד.
+* `POST /agent/message?session_id=...` - התוסף שולח הודעה אחת (hello /
+  start_task / stop_task / response); התשובה בפועל (אם יש) מגיעה
+  אסינכרונית דרך `GET /agent/poll`.
+
+כל שלושת ה-endpoints תחת `/agent/` דורשים header
+`Authorization: Bearer <auth_token>` - בניגוד ל-WebSocket, בקשת `fetch`
+יכולה לשאת header כזה בלי בעיה, כך שהטוקן לעולם לא מופיע ב-URL (לא
+בהיסטוריית דפדפן, לא בלוגים של פרוקסי/פילטר תוכן).
 
 ### פריסה ל-Render
 
 השירות מוגדר כ-**Web Service** של Render (לא Background Worker / Static
-Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כתובת ציבורית
-(`https://`/`wss://`) שהתוסף יכול להתחבר אליה, וגם התומך ב-WebSocket
-(שעליו כל התקשורת עם התוסף מתבססת) ובבדיקת חיות (`healthCheckPath`).
+Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כתובת HTTPS ציבורית
+שהתוסף יכול לגשת אליה, וגם תומך בבדיקת חיות (`healthCheckPath`). מכיוון
+שהתקשורת עם התוסף היא HTTP רגיל (long-polling) ולא WebSocket, אין דרישות
+מיוחדות מעבר לזה.
 
 **אפשרות א' - Blueprint (מומלץ, אוטומטי):** בריפו קיים קובץ `render.yaml`
 שכבר מגדיר את השירות עם כל השדות הנדרשים ל-Web Service (`type: web`,
@@ -214,8 +227,8 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
    * `TARGET_URL` - כתובת האתר הפנימי.
    * `AGENT_AUTH_TOKEN` - סוד משותף (ייצרו עם `python -c "import secrets; print(secrets.token_urlsafe(32))"`).
    * `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` - לפי הספק שנבחר (`LLM_PROVIDER`, גם הוא ניתן לעריכה בכרטיסיית Environment).
-4. Render יפרוס מחדש אוטומטית. כתובת ה-WebSocket שלכם תהיה
-   `wss://<שם-השירות>.onrender.com/ws`.
+4. Render יפרוס מחדש אוטומטית. כתובת השרת שלכם (שתזינו בהגדרות התוסף)
+   תהיה `https://<שם-השירות>.onrender.com`.
 
 **אפשרות ב' - יצירה ידנית של Web Service** (אם מעדיפים לא להשתמש ב-Blueprint):
 
@@ -230,7 +243,7 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
    (`TARGET_URL`, `AGENT_AUTH_TOKEN`, `LLM_PROVIDER`, `MODEL_NAME`, ומפתח
    ה-API הרלוונטי).
 4. Render יבנה ויפרוס את השירות ויקצה לו כתובת `https://<שם-השירות>.onrender.com`
-   (והתוסף מתחבר ל-`wss://<אותה-כתובת>/ws`).
+   (זו הכתובת שמזינים בהגדרות התוסף).
 
 בשני המקרים אין צורך להגדיר `PORT` ידנית - Render מזריק אותו אוטומטית
 כמשתנה סביבה, ו-`agent/main.py` קורא אותו ומאזין עליו (ראו `agent/main.py`).
@@ -249,7 +262,7 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
 3. **Load unpacked** → בחרו את התיקייה `extension/`.
 4. לחצו על אייקון התוסף → **Server settings** (או קליק ימני על האייקון → Options).
 5. הזינו:
-   * **Server URL**: כתובת השרת, לדוגמה `wss://web-agent.onrender.com` (בלי `/ws` בסוף).
+   * **Server URL**: כתובת השרת, לדוגמה `https://web-agent.onrender.com` (בלי `/` בסוף).
    * **Auth token**: אותו `AGENT_AUTH_TOKEN` שהגדרתם בשרת.
 6. שמרו. התוסף יתחבר אוטומטית; נורית הסטטוס בפופאפ תהפוך לירוקה.
 
@@ -365,7 +378,7 @@ Site / Cron Job) - זה השירות היחיד מסוגי Render שחושף כ�
 python -m pytest tests -q
 ```
 
-כל הבדיקות רצות ללא דפדפן אמיתי, ללא WebSocket אמיתי וללא קריאת LLM
+כל הבדיקות רצות ללא דפדפן אמיתי, ללא חיבור רשת אמיתי וללא קריאת LLM
 אמיתית:
 
 * `tests/test_utils.py`, `test_memory.py`, `test_config.py`, `test_llm.py` -
@@ -378,16 +391,24 @@ python -m pytest tests -q
   screenshot) מול `RemoteBrowser` מדומה.
 * `tests/test_controller.py` - לולאת ה-`AgentController` מול LLM מתוסרט.
 * `tests/integration/test_server_flow.py` - בדיקת אינטגרציה מלאה: מפעילה
-  את אפליקציית ה-FastAPI האמיתית (`TestClient`), מדמה תוסף שמגיב על גבי
-  WebSocket אמיתי (בתוך התהליך), ומוודאת שפרוטוקול ההודעות המלא - כולל
-  אימות token, `hello_ack`, `get_page_state`/`execute_action`/`response`,
-  ו-`task_finished` - עובד קצה-לקצה.
+  את אפליקציית ה-FastAPI האמיתית (`TestClient`), מדמה תוסף שמדבר איתה
+  דרך אותם endpoints אמיתיים של HTTP long-polling (בתוך התהליך), ומוודאת
+  שפרוטוקול ההודעות המלא - כולל אימות token, `/agent/connect`,
+  `get_page_state`/`execute_action`/`response`, ו-`task_finished` - עובד
+  קצה-לקצה.
 
 ## אבטחה
 
-* השרת דוחה כל חיבור WebSocket שאינו נושא `token` תואם ל-`AGENT_AUTH_TOKEN`.
-* התוסף פועל אך ורק מול `target_url` שהשרת מדווח עליו ב-handshake; הוא
-  אינו יוזם פעולות על טאבים אחרים.
+* כל בקשה ל-`/agent/connect`, `/agent/poll`, `/agent/message` דורשת
+  header `Authorization: Bearer <auth_token>` תואם ל-`AGENT_AUTH_TOKEN`;
+  בקשה בלי ה-header הזה, או עם טוקן שגוי, נדחית מיד (401). מכיוון שזה
+  header רגיל (לא URL), הטוקן לא נחשף בהיסטוריית דפדפן, בלוגים של
+  פרוקסי, או בפילטרים שבודקים כתובות.
+* לכל session (שנפתח ב-`/agent/connect`) יש מזהה אקראי (`session_id`) -
+  `/agent/poll`/`/agent/message` עם מזהה לא מוכר נדחים (404), וה-session
+  עצמו נשכח ומנוקה אוטומטית אחרי כמה דקות בלי פעילות.
+* התוסף פועל אך ורק מול `target_url` שהשרת מדווח עליו ב-`/agent/connect`;
+  הוא אינו יוזם פעולות על טאבים אחרים.
 * לחיצות מתבצעות תמיד לפי סלקטור ב-DOM, לא לפי קואורדינטות עכבר.
 * קריאת תוכן העמוד מתבצעת דרך ה-DOM (`innerText`/`value`), ללא OCR.
 * המודל אינו מבצע פעולה שלא התבקשה, ועוצר ומבקש החלטה אנושית כשחסר מידע.
@@ -403,7 +424,7 @@ python -m pytest tests -q
 Agent/
 ├── agent/
 │   ├── main.py              # הפעלת שרת ה-uvicorn
-│   ├── server.py            # FastAPI, endpoint /ws, פרוטוקול ההודעות
+│   ├── server.py            # FastAPI, endpoints /agent/*, פרוטוקול ההודעות
 │   ├── config.py            # AgentConfig + טעינת YAML/משתני סביבה
 │   ├── connection.py        # ExtensionConnection / RemoteBrowser
 │   ├── controller.py        # לולאת ה-Agent הראשית
@@ -420,7 +441,7 @@ Agent/
 │   └── data/                     # memory.json
 ├── extension/
 │   ├── manifest.json
-│   ├── background.js          # WebSocket + ניתוב פעולות ברמת הטאב
+│   ├── background.js          # לולאת long-polling + ניתוב פעולות ברמת הטאב
 │   ├── content.js              # DOM actions + קריאת מצב דף
 │   ├── storage.js               # עטיפת chrome.storage משותפת
 │   ├── popup.html / popup.js     # ממשק המשימה
