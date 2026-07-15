@@ -15,6 +15,7 @@ const KEEPALIVE_ALARM = "web-agent-keepalive";
 const MAX_LOG_ENTRIES = 200;
 const APPROVAL_TIMEOUT_MS = 120000;
 const DOWNLOAD_WAIT_MS = 8000;
+const OPEN_TAB_CLICK_TIMEOUT_MS = 6000;
 
 let socket = null;
 let connectionStatus = "disconnected"; // disconnected | connecting | connected | unconfigured
@@ -341,27 +342,83 @@ async function performAction(action, selector, text, _isFinal) {
 async function openTab(currentTabId, selector) {
   if (!selector) return { success: false, message: "open_tab requires a selector.", error: "missing_selector" };
   await ensureContentScript(currentTabId);
+
+  // Fast path: the selector resolves to a real <a href>, so we can open it
+  // directly without touching the page.
   const hrefResult = await chrome.tabs.sendMessage(currentTabId, {
     kind: "execute_action",
     action: "read_href",
     selector,
   });
-  if (!hrefResult.success || !hrefResult.data) {
+  if (hrefResult.success && hrefResult.data) {
+    try {
+      const newTab = await chrome.tabs.create({ url: hrefResult.data, active: true, openerTabId: currentTabId });
+      await waitForTabComplete(newTab.id);
+      tabStack.push(currentTabId);
+      workingTabId = newTab.id;
+      return { success: true, message: `Opened '${hrefResult.data}' in a new tab.`, data: hrefResult.data };
+    } catch (err) {
+      return { success: false, message: "Failed to open a new tab.", error: String(err) };
+    }
+  }
+
+  // Fallback: many inquiry/list UIs render rows as clickable <div>/<tr>
+  // elements with a JS click handler instead of a plain <a href> - there is
+  // no href to resolve. Click the element for real and watch for the tab it
+  // opens, the same way a person clicking the row with a mouse would.
+  const newTabPromise = waitForNewTab(OPEN_TAB_CLICK_TIMEOUT_MS);
+  const clickResult = await chrome.tabs.sendMessage(currentTabId, {
+    kind: "execute_action",
+    action: "click",
+    selector,
+  });
+  if (!clickResult.success) {
     return {
       success: false,
-      message: hrefResult.message || `Could not resolve a link for '${selector}'.`,
-      error: hrefResult.error || "no_href",
+      message: clickResult.message || `Could not click '${selector}' to open it.`,
+      error: clickResult.error || "click_failed",
+    };
+  }
+
+  const newTabId = await newTabPromise;
+  if (newTabId === null) {
+    return {
+      success: false,
+      message:
+        `Clicked '${selector}' but no new tab opened within ${OPEN_TAB_CLICK_TIMEOUT_MS / 1000}s. ` +
+        "If this row opens the item in the same tab instead of a new one, use 'click' directly instead of 'open_tab'.",
+      error: "no_new_tab",
     };
   }
   try {
-    const newTab = await chrome.tabs.create({ url: hrefResult.data, active: true, openerTabId: currentTabId });
-    await waitForTabComplete(newTab.id);
-    tabStack.push(currentTabId);
-    workingTabId = newTab.id;
-    return { success: true, message: `Opened '${hrefResult.data}' in a new tab.`, data: hrefResult.data };
-  } catch (err) {
-    return { success: false, message: "Failed to open a new tab.", error: String(err) };
+    await waitForTabComplete(newTabId);
+  } catch {
+    /* the tab may still be usable even if it never reaches "complete" in time */
   }
+  tabStack.push(currentTabId);
+  workingTabId = newTabId;
+  return { success: true, message: `Clicked '${selector}' and switched to the tab it opened.` };
+}
+
+function waitForNewTab(timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onCreated.removeListener(listener);
+      resolve(null);
+    }, timeoutMs);
+
+    function listener(tab) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      chrome.tabs.onCreated.removeListener(listener);
+      resolve(tab.id);
+    }
+    chrome.tabs.onCreated.addListener(listener);
+  });
 }
 
 async function closeTab() {
