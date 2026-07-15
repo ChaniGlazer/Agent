@@ -1,10 +1,21 @@
 /**
- * Background service worker: owns the WebSocket connection to the Web Agent
- * server, and is the only place with access to privileged extension APIs
+ * Background service worker: owns the connection to the Web Agent server,
+ * and is the only place with access to privileged extension APIs
  * (chrome.tabs, chrome.debugger, chrome.downloads, chrome.notifications).
  *
+ * Transport is plain HTTPS long-polling, not a WebSocket - a WebSocket's
+ * upgrade handshake is a distinct HTTP mechanism some corporate/content
+ * filters block outright, with no client-side workaround. Long-polling
+ * looks like any other REST call: this side always initiates, and the
+ * "server pushes a message" half of the protocol is simulated by holding a
+ * GET /agent/poll request open until the server has something to send.
+ *
  * Protocol (see agent/server.py for the authoritative definition):
- *   server -> extension: {type:"hello_ack"|"request"|"log"|"task_finished"|"error", ...}
+ *   POST /agent/connect          -> {session_id, target_url}
+ *   GET  /agent/poll?session_id  -> one of the "server -> extension" messages below, or {"type":"idle"}
+ *   POST /agent/message?session_id, body = one "extension -> server" message below -> {"ok": true}
+ *
+ *   server -> extension: {type:"request"|"log"|"task_finished"|"error", ...}
  *   extension -> server: {type:"hello"|"start_task"|"stop_task"|"response", ...}
  */
 
@@ -16,13 +27,12 @@ const MAX_LOG_ENTRIES = 200;
 const APPROVAL_TIMEOUT_MS = 120000;
 const DOWNLOAD_WAIT_MS = 8000;
 const OPEN_TAB_CLICK_TIMEOUT_MS = 6000;
-// Sent as a WebSocket subprotocol instead of a `?token=` query parameter,
-// so the auth token never appears in the connection URL - some content
-// filters inspect and block URLs that carry a token in plain sight.
-const AUTH_SUBPROTOCOL_PREFIX = "agent-token.";
 
-let socket = null;
-let connectionStatus = "disconnected"; // disconnected | connecting | connected | unconfigured
+let sessionId = null;
+let serverBase = "";
+let authToken = "";
+let pollGeneration = 0; // bumped on every (re)connect, so a stale poll loop from a previous session stops itself
+let connectionStatus = "disconnected"; // disconnected | connecting | connected | unconfigured | error
 let targetUrl = "";
 let currentTask = null; // { goal, running }
 let reconnectTimer = null;
@@ -40,106 +50,129 @@ const LINK_CHECK_CONCURRENCY = 5;
 // Lifecycle
 // --------------------------------------------------------------------- //
 
-chrome.runtime.onStartup.addListener(() => connectWebSocket());
+chrome.runtime.onStartup.addListener(() => connectAndPoll());
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
-  connectWebSocket();
+  connectAndPoll();
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === KEEPALIVE_ALARM) connectWebSocket();
+  if (alarm.name === KEEPALIVE_ALARM) connectAndPoll();
 });
 
 // --------------------------------------------------------------------- //
-// WebSocket connection management
+// Connection management (HTTP long-polling)
 // --------------------------------------------------------------------- //
 
-async function connectWebSocket() {
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-    return;
-  }
+async function connectAndPoll() {
+  if (sessionId !== null) return; // already connected and polling
+
   const { serverUrl, token } = await getAgentConfig();
   if (!serverUrl || !token) {
     connectionStatus = "unconfigured";
     broadcastStatus();
     return;
   }
+  serverBase = serverUrl.replace(/\/+$/, "");
+  authToken = token;
 
   connectionStatus = "connecting";
   broadcastStatus();
 
-  const wsUrl = `${serverUrl.replace(/\/+$/, "")}/ws`;
+  let data;
   try {
-    socket = new WebSocket(wsUrl, [`${AUTH_SUBPROTOCOL_PREFIX}${token}`]);
-  } catch (err) {
+    const response = await fetch(`${serverBase}/agent/connect`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    data = await response.json();
+  } catch {
     connectionStatus = "error";
     broadcastStatus();
     scheduleReconnect();
     return;
   }
 
-  socket.addEventListener("open", () => {
-    connectionStatus = "connected";
-    pushLog("info", "מחובר לשרת.");
-    broadcastStatus();
-  });
-  socket.addEventListener("message", (event) => handleServerMessage(event.data));
-  socket.addEventListener("close", () => {
-    connectionStatus = "disconnected";
-    broadcastStatus();
-    scheduleReconnect();
-  });
-  socket.addEventListener("error", () => {
-    pushLog("error", "שגיאת תקשורת (WebSocket).");
-  });
+  sessionId = data.session_id;
+  targetUrl = data.target_url || "";
+  await chrome.storage.session.set({ targetUrl });
+  connectionStatus = "connected";
+  pushLog("info", `מחובר לשרת. אתר היעד: ${targetUrl}`);
+  broadcastStatus();
+
+  pollGeneration += 1;
+  pollLoop(pollGeneration);
+}
+
+async function pollLoop(generation) {
+  while (generation === pollGeneration && sessionId !== null) {
+    let message;
+    try {
+      const response = await fetch(`${serverBase}/agent/poll?session_id=${encodeURIComponent(sessionId)}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (response.status === 404) {
+        // The server no longer knows this session (e.g. it restarted, or
+        // the session timed out from inactivity) - reconnect from scratch.
+        handleDisconnect();
+        return;
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      message = await response.json();
+    } catch {
+      pushLog("error", "שגיאת תקשורת עם השרת.");
+      handleDisconnect();
+      return;
+    }
+    if (message.type !== "idle") {
+      await handleServerMessage(message);
+    }
+  }
+}
+
+function handleDisconnect() {
+  sessionId = null;
+  connectionStatus = "disconnected";
+  broadcastStatus();
+  scheduleReconnect();
 }
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connectWebSocket();
+    connectAndPoll();
   }, RECONNECT_DELAY_MS);
 }
 
-function disconnectWebSocket() {
+function disconnectPolling() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-  if (socket) {
-    socket.close();
-    socket = null;
-  }
+  sessionId = null;
+  pollGeneration += 1; // stop any in-flight poll loop
   connectionStatus = "disconnected";
   broadcastStatus();
 }
 
 function sendToServer(obj) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(obj));
-  }
+  if (!sessionId) return;
+  fetch(`${serverBase}/agent/message?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify(obj),
+  }).catch(() => {
+    pushLog("error", "שגיאת תקשורת (שליחה לשרת נכשלה).");
+  });
 }
 
 // --------------------------------------------------------------------- //
 // Server message handling
 // --------------------------------------------------------------------- //
 
-async function handleServerMessage(raw) {
-  let message;
-  try {
-    message = JSON.parse(raw);
-  } catch {
-    pushLog("error", "התקבלה הודעה לא תקינה מהשרת.");
-    return;
-  }
-
+async function handleServerMessage(message) {
   switch (message.type) {
-    case "hello_ack":
-      targetUrl = message.target_url || "";
-      await chrome.storage.session.set({ targetUrl });
-      pushLog("info", `השרת מוכן. אתר היעד: ${targetUrl}`);
-      broadcastStatus();
-      break;
     case "request":
       await handleServerRequest(message);
       break;
@@ -191,7 +224,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse(await getStatusSnapshot());
         break;
       case "reconnect":
-        await connectWebSocket();
+        await connectAndPoll();
         sendResponse(await getStatusSnapshot());
         break;
       case "start_task":

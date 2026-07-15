@@ -192,9 +192,10 @@ class AgentConfig:
         target_url: The single internal website the agent is allowed to operate
             on. Sent to the extension on connect so it can refuse to act on any
             other site, and included as context for the LLM.
-        auth_token: Shared secret the extension must present (as a `token`
-            query parameter) to open a WebSocket session. Required so the
-            publicly reachable Render URL can't be driven by strangers.
+        auth_token: Shared secret the extension must present (as an
+            `Authorization: Bearer <auth_token>` header) to use the server's
+            HTTP API. Required so the publicly reachable Render URL can't be
+            driven by strangers.
         host: Local bind address for `uvicorn` (only relevant when running
             the server locally; Render provides its own routing).
         port: Local bind port for `uvicorn`. On Render this is overridden by
@@ -302,8 +303,8 @@ class AgentConfig:
         )
         if not config.auth_token:
             logger.warning(
-                "No auth_token configured - the WebSocket endpoint will reject every "
-                "connection. Set 'auth_token' in config.yaml or the AGENT_AUTH_TOKEN "
+                "No auth_token configured - the server's HTTP API will reject every "
+                "request. Set 'auth_token' in config.yaml or the AGENT_AUTH_TOKEN "
                 "environment variable."
             )
         logger.debug("Loaded configuration: %s", config)

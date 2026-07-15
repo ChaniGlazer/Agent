@@ -1,9 +1,16 @@
-"""Integration test: drives the full WebSocket protocol between the server
-(agent.server.create_app) and a simulated extension, using FastAPI's
+"""Integration test: drives the full HTTP long-polling protocol between the
+server (agent.server.create_app) and a simulated extension, using FastAPI's
 TestClient. No real browser or LLM API is involved - DOM responses and LLM
 decisions are both scripted, so this exercises exactly the wiring that
-matters: auth, the request/response correlation, and the controller loop
-running concurrently with the message-receive loop.
+matters: auth, session handling, the request/response correlation, and the
+controller loop running concurrently with polling.
+
+Every test uses TestClient as a context manager (`with TestClient(app) as
+client:`). That isn't cosmetic: only inside that context does TestClient
+keep one persistent event loop alive across separate .get()/.post() calls,
+matching how a real, long-running uvicorn process behaves. Without it, each
+call gets its own throwaway event loop, which silently kills the background
+asyncio task the controller runs in between calls.
 """
 
 from __future__ import annotations
@@ -11,9 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from agent.config import AgentConfig, ApprovalMode, LLMProviderName
 from agent.server import create_app
@@ -61,111 +66,154 @@ _PAGE_STATE_PAYLOAD = {
 }
 
 
+def _auth(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _connect(client: TestClient, config: AgentConfig) -> str:
+    response = client.post("/agent/connect", headers=_auth(config.auth_token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_url"] == config.target_url
+    return body["session_id"]
+
+
+def _poll(client: TestClient, session_id: str, config: AgentConfig) -> dict[str, Any]:
+    response = client.get(f"/agent/poll?session_id={session_id}", headers=_auth(config.auth_token))
+    assert response.status_code == 200
+    return response.json()
+
+
+def _send(client: TestClient, session_id: str, config: AgentConfig, message: dict[str, Any]) -> None:
+    response = client.post(f"/agent/message?session_id={session_id}", headers=_auth(config.auth_token), json=message)
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
 def test_healthz_and_root(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        assert client.get("/healthz").json() == {"status": "ok"}
 
-    assert client.get("/healthz").json() == {"status": "ok"}
-
-    root_response = client.get("/")
-    assert root_response.status_code == 200
-    assert root_response.headers["content-type"].startswith("text/html")
-    assert "CodeBloom" in root_response.text
-    # The landing page must never leak what this backend actually does.
-    assert config.target_url not in root_response.text
-    assert "target_url" not in root_response.text
+        root_response = client.get("/")
+        assert root_response.status_code == 200
+        assert root_response.headers["content-type"].startswith("text/html")
+        assert "CodeBloom" in root_response.text
+        # The landing page must never leak what this backend actually does.
+        assert config.target_url not in root_response.text
+        assert "target_url" not in root_response.text
 
 
-def test_websocket_rejects_invalid_token(tmp_path: Path) -> None:
+def test_connect_rejects_missing_or_invalid_token(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
-    client = TestClient(app)
-
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/ws", subprotocols=["agent-token.wrong-token"]):
-            pass
+    with TestClient(app) as client:
+        assert client.post("/agent/connect").status_code == 401
+        assert client.post("/agent/connect", headers=_auth("wrong-token")).status_code == 401
 
 
-def test_websocket_rejects_invalid_legacy_query_token(tmp_path: Path) -> None:
+def test_connect_accepts_valid_token(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
-    client = TestClient(app)
-
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/ws?token=wrong-token"):
-            pass
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
+        assert session_id
 
 
-def test_websocket_accepts_legacy_query_token(tmp_path: Path) -> None:
-    """A not-yet-reloaded extension still sending `?token=` must keep working."""
+def test_poll_and_message_reject_unknown_session(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        assert client.get("/agent/poll?session_id=nonexistent", headers=_auth(config.auth_token)).status_code == 404
+        assert (
+            client.post(
+                "/agent/message?session_id=nonexistent", headers=_auth(config.auth_token), json={"type": "hello"}
+            ).status_code
+            == 404
+        )
 
-    with client.websocket_connect(f"/ws?token={config.auth_token}") as ws:
-        hello = ws.receive_json()
-        assert hello["type"] == "hello_ack"
+
+def test_poll_and_message_reject_missing_or_invalid_token(tmp_path: Path) -> None:
+    config = _make_config(tmp_path)
+    app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
+
+        assert client.get(f"/agent/poll?session_id={session_id}").status_code == 401
+        assert client.get(f"/agent/poll?session_id={session_id}", headers=_auth("wrong-token")).status_code == 401
+        assert client.post(f"/agent/message?session_id={session_id}", json={"type": "hello"}).status_code == 401
+
+
+def test_poll_returns_idle_after_timeout_with_nothing_queued(tmp_path: Path, monkeypatch) -> None:
+    import agent.server as server_module
+
+    monkeypatch.setattr(server_module, "POLL_TIMEOUT_SECONDS", 0.05)
+    config = _make_config(tmp_path)
+    app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
+        assert _poll(client, session_id, config) == {"type": "idle"}
 
 
 def test_stop_task_with_no_active_task_reports_an_error(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM([]))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
 
-    with client.websocket_connect("/ws", subprotocols=[f"agent-token.{config.auth_token}"]) as ws:
-        hello = ws.receive_json()
-        assert hello["type"] == "hello_ack"
-
-        ws.send_json({"type": "stop_task"})
-        response = ws.receive_json()
-        assert response["type"] == "error"
+        _send(client, session_id, config, {"type": "stop_task"})
+        message = _poll(client, session_id, config)
+        assert message["type"] == "error"
 
 
-def test_full_task_flow_over_websocket(tmp_path: Path) -> None:
+def test_full_task_flow_over_http_polling(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     decisions = [
         {"reason": "enter the name", "action": "fill", "selector": "#name", "text": "Ada", "finished": False},
         {"reason": "submit the form", "action": "click", "selector": "#submit", "finished": True},
     ]
     app = create_app(config, llm_factory=lambda cfg: ScriptedLLM(decisions))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
 
-    with client.websocket_connect("/ws", subprotocols=[f"agent-token.{config.auth_token}"]) as ws:
-        hello = ws.receive_json()
-        assert hello == {"type": "hello_ack", "target_url": config.target_url}
+        _send(client, session_id, config, {"type": "start_task", "goal": "Fill in the name and submit."})
 
-        ws.send_json({"type": "start_task", "goal": "Fill in the name and submit."})
-
-        log_msg = ws.receive_json()
+        log_msg = _poll(client, session_id, config)
         assert log_msg["type"] == "log"
         assert "Task started" in log_msg["message"]
 
         # Step 1: get_page_state -> fill
-        req = ws.receive_json()
+        req = _poll(client, session_id, config)
         assert req["type"] == "request" and req["action"] == "get_page_state"
-        ws.send_json({"type": "response", "request_id": req["request_id"], "payload": _PAGE_STATE_PAYLOAD})
+        _send(client, session_id, config, {"type": "response", "request_id": req["request_id"], "payload": _PAGE_STATE_PAYLOAD})
 
-        req = ws.receive_json()
+        req = _poll(client, session_id, config)
         assert req["action"] == "execute_action"
         assert req["params"] == {"action": "fill", "selector": "#name", "text": "Ada", "is_final": False}
-        ws.send_json(
-            {"type": "response", "request_id": req["request_id"], "payload": {"success": True, "message": "filled"}}
+        _send(
+            client,
+            session_id,
+            config,
+            {"type": "response", "request_id": req["request_id"], "payload": {"success": True, "message": "filled"}},
         )
 
         # Step 2: get_page_state -> click (final)
-        req = ws.receive_json()
+        req = _poll(client, session_id, config)
         assert req["action"] == "get_page_state"
-        ws.send_json({"type": "response", "request_id": req["request_id"], "payload": _PAGE_STATE_PAYLOAD})
+        _send(client, session_id, config, {"type": "response", "request_id": req["request_id"], "payload": _PAGE_STATE_PAYLOAD})
 
-        req = ws.receive_json()
+        req = _poll(client, session_id, config)
         assert req["action"] == "execute_action"
         assert req["params"] == {"action": "click", "selector": "#submit", "text": "", "is_final": True}
-        ws.send_json(
-            {"type": "response", "request_id": req["request_id"], "payload": {"success": True, "message": "clicked"}}
+        _send(
+            client,
+            session_id,
+            config,
+            {"type": "response", "request_id": req["request_id"], "payload": {"success": True, "message": "clicked"}},
         )
 
-        finished = ws.receive_json()
+        finished = _poll(client, session_id, config)
         assert finished == {"type": "task_finished", "completed": True, "stop_reason": "finished"}
 
     memory_file = config.data_folder / "memory.json"

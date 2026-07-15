@@ -1,6 +1,6 @@
 """Unit tests for agent.tools.ToolExecutor: dry-run, approval gating, and the
 retry -> refresh -> screenshot error-recovery flow - driven through a fake
-RemoteBrowser so no real extension/WebSocket is needed.
+RemoteBrowser so no real extension/connection is needed.
 """
 
 from __future__ import annotations
