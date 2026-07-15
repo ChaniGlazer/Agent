@@ -34,9 +34,15 @@ no code fences) with exactly this shape:
 }
 
 Notes on the less obvious actions:
-- "open_tab": selector must point to a link (an <a> element, or something inside
-  one) from the PAGE STATE. Opens its target in a new tab and switches PAGE
-  STATE to that new tab from the next step onward.
+- "open_tab": selector should point to a row/item from the PAGE STATE that
+  represents one entry in a list (e.g. one inquiry/ticket in a list of
+  inquiries). If it resolves to a real link (an <a> element, or something
+  inside one), its target is opened directly; otherwise the element is
+  clicked for real, like a mouse click, and whatever tab that click opens
+  becomes the new active tab. Either way, PAGE STATE switches to that new
+  tab from the next step onward. This is the standard way to work through a
+  list page one item at a time: open_tab -> act inside the item -> close_tab
+  -> open_tab on the next item.
 - "close_tab": closes the tab most recently opened with "open_tab" and switches
   PAGE STATE back to the tab you were on before. Fails harmlessly if there is
   nothing to close.
