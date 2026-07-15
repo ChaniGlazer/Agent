@@ -11,7 +11,7 @@
 ## ארכיטקטורה
 
 ```
-                         WebSocket (wss://.../ws?token=...)
+                    WebSocket (wss://.../ws, אימות ב-Sec-WebSocket-Protocol)
 ┌─────────────────────┐  ◄──────────────────────────────►  ┌─────────────────────┐
 │   שרת (Render)        │                                    │   תוסף Chrome         │
 │   agent/server.py     │   {"type":"request", action:...}   │   background.js       │
@@ -191,7 +191,11 @@ python -m agent.main --config config.yaml
 * `GET /healthz` - בדיקת חיות.
 * `GET /` - דף נחיתה ציבורי (`agent/static/index.html`) עם מיתוג כללי של החברה;
   לא חושף שום מידע על מה שהשרת בפועל עושה (אין JSON, אין `target_url`).
-* `WS /ws?token=...` - ה-endpoint שהתוסף מתחבר אליו.
+* `WS /ws` - ה-endpoint שהתוסף מתחבר אליו. הטוקן עובר ב-handshake עצמו
+  (header `Sec-WebSocket-Protocol`, כ-`agent-token.<טוקן>` - כך שהוא מוגדר
+  דרך הפרמטר `protocols` של ה-`WebSocket` בדפדפן) ולא ב-URL, כדי שהוא לא
+  ייחשף בכתובת עצמה (שנרשמת בלוגים של פרוקסי/פילטר תוכן, בהיסטוריית
+  הדפדפן וכו'). `?token=...` עדיין נתמך כ-fallback לתוסף שעדיין לא עודכן.
 
 ### פריסה ל-Render
 
