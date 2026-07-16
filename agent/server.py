@@ -207,10 +207,17 @@ async def _handle_message(session: _Session, message: dict[str, Any], config: Ag
             await session.connection.send_error("start_task requires a non-empty 'goal'.")
             return
 
-        task_config = _effective_config(config, message)
-        memory = Memory(goal=goal)
-        tools = ToolExecutor(browser=session.browser, config=task_config, memory=memory)
-        llm = llm_factory(task_config)
+        try:
+            task_config = _effective_config(config, message)
+            memory = Memory(goal=goal)
+            tools = ToolExecutor(browser=session.browser, config=task_config, memory=memory)
+            llm = llm_factory(task_config)
+        except Exception as exc:  # noqa: BLE001 - e.g. a missing API key or bad model config
+            logger.exception("Failed to start task")
+            await session.connection.send_error(f"Could not start task: {exc}")
+            await session.connection.send_task_finished(False, "server_error")
+            return
+
         session.active_controller = AgentController(config=task_config, llm=llm, tools=tools, memory=memory)
         session.active_task = _spawn_task(session.active_controller, memory, session.connection, task_config, goal)
 
