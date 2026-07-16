@@ -167,6 +167,41 @@ def test_stop_task_with_no_active_task_reports_an_error(tmp_path: Path) -> None:
         assert message["type"] == "error"
 
 
+def test_start_task_reports_error_when_llm_factory_fails(tmp_path: Path) -> None:
+    """A broken LLM config (e.g. a missing API key) must not fail silently.
+
+    Before this was fixed, an exception raised while building the LLM
+    provider (synchronously, during "start_task" handling) propagated out of
+    the FastAPI route as an uncaught 500 - a response the extension's
+    fetch()-based sendToServer() never inspects for success, so the task
+    appeared to start (the popup was already showing "running") and then
+    nothing ever happened: no logs, no requests, no error, indefinitely.
+    """
+
+    def _broken_llm_factory(cfg: AgentConfig) -> Any:
+        raise RuntimeError("no API key configured for provider 'openai'")
+
+    config = _make_config(tmp_path)
+    app = create_app(config, llm_factory=_broken_llm_factory)
+    with TestClient(app) as client:
+        session_id = _connect(client, config)
+
+        _send(client, session_id, config, {"type": "start_task", "goal": "Do something."})
+
+        error_msg = _poll(client, session_id, config)
+        assert error_msg["type"] == "error"
+        assert "no API key configured" in error_msg["message"]
+
+        finished = _poll(client, session_id, config)
+        assert finished == {"type": "task_finished", "completed": False, "stop_reason": "server_error"}
+
+        # A subsequent start_task must be accepted - the failed attempt must
+        # not have left a phantom "active_task" blocking new ones.
+        _send(client, session_id, config, {"type": "start_task", "goal": "Do something."})
+        error_msg = _poll(client, session_id, config)
+        assert error_msg["type"] == "error"
+
+
 def test_full_task_flow_over_http_polling(tmp_path: Path) -> None:
     config = _make_config(tmp_path)
     decisions = [

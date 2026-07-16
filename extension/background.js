@@ -162,9 +162,15 @@ function sendToServer(obj) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
     body: JSON.stringify(obj),
-  }).catch(() => {
-    pushLog("error", "שגיאת תקשורת (שליחה לשרת נכשלה).");
-  });
+  })
+    .then((response) => {
+      if (!response.ok) {
+        pushLog("error", `שגיאת שרת (${response.status}) בשליחת ההודעה.`);
+      }
+    })
+    .catch(() => {
+      pushLog("error", "שגיאת תקשורת (שליחה לשרת נכשלה).");
+    });
 }
 
 // --------------------------------------------------------------------- //
